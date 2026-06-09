@@ -15,7 +15,7 @@ down:
 	docker compose down
 
 test:
-	docker compose exec api pytest
+	docker compose exec api pytest tests/ -v
 
 seed:
 	@echo "seed: not yet implemented"

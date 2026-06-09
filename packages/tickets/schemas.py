@@ -1,0 +1,16 @@
+TICKET_FIELDS = [
+    "action",
+    "agent_id",
+    "constraints_hash",
+    "decision_id",
+    "expires_at",
+    "issued_at",
+    "issuer_signature",
+    "jti",
+    "output_schema_hash",
+    "payload_hash",
+    "purpose",
+    "resource",
+    "status",
+    "ticket_id",
+]
