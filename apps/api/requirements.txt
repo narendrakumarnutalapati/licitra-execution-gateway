@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+pynacl
+cryptography
+reportlab
+pytest
+httpx
+python-dotenv
+alembic
+jsonschema
+regex
