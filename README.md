@@ -86,7 +86,6 @@ This implementation is built on two published research primitives:
 - [LICITRA-SENTRY](https://github.com/narendrakumarnutalapati/licitra-sentry) — pre-execution enforcement layer
 - [LICITRA-MMR](https://github.com/narendrakumarnutalapati/licitra-mmr-core) — tamper-evident MMR audit chain
 
-
 ## Standards
 
 - Reviewer: [OWASP GenAI Data Security Risks & Mitigations v1.0 (2026)](https://genai.owasp.org)
