@@ -12,7 +12,7 @@ help:
 	@echo "  make down        — stop all containers"
 	@echo "  make seed        — populate with demo data"
 	@echo "  make test        — run 54 unit tests"
-	@echo "  make test-int    — run 37 integration tests"
+	@echo "  make test-integration — run 37 integration tests"
 	@echo "  make test-all    — run all 91 tests"
 	@echo "  make demo-full   — run all 10 attack demos"
 	@echo "  make logs        — tail API logs"
