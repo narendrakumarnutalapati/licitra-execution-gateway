@@ -1,5 +1,4 @@
 .env
-docs/
 __pycache__/
 *.pyc
 *.pyo
@@ -12,3 +11,4 @@ build/
 venv/
 .venv/
 *.log
+docs/
