@@ -7,6 +7,7 @@
 [![Tests](https://img.shields.io/badge/tests-91%20passing-brightgreen)]()
 [![OWASP](https://img.shields.io/badge/OWASP-LLM01%20LLM05%20LLM06%20LLM10-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20634496.svg)](https://doi.org/10.5281/zenodo.20634496)
 
 ## The Problem
 
@@ -177,6 +178,9 @@ This gateway implements the LICITRA framework:
 - **LICITRA-MMR-CORE** — Merkle Mountain Range audit
   ledger for tamper-evident accountability
   DOI: https://doi.org/10.5281/zenodo.18843032
+
+- **LICITRA Execution Gateway v1.0.1** — Reference implementation  
+  DOI: https://doi.org/10.5281/zenodo.20634496
 
 OWASP GenAI Data Security Risks v1.0 — credited reviewer
 
