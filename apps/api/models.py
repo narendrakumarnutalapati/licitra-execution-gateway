@@ -80,11 +80,11 @@ class ExecutionTicket(Base):
     constraints_hash = Column(String, nullable=False)
     payload_hash = Column(String, nullable=False)
     output_schema_hash = Column(String, nullable=False)
-    expires_at = Column(DateTime(timezone=True), nullable=False)
+    expires_at = Column(String, nullable=False)
     jti = Column(String, unique=True, nullable=False)
     issuer_signature = Column(Text, nullable=False)
     status = Column(String, default="ACTIVE")
-    issued_at = Column(DateTime(timezone=True), default=_now)
+    issued_at = Column(String, default=None)
 
 
 class VerificationRecord(Base):

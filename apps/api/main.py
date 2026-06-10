@@ -99,11 +99,11 @@ def _ticket_row_to_dict(row: ExecutionTicket) -> dict:
         "constraints_hash": row.constraints_hash,
         "payload_hash": row.payload_hash,
         "output_schema_hash": row.output_schema_hash,
-        "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+        "expires_at": row.expires_at,
         "jti": row.jti,
         "issuer_signature": row.issuer_signature,
         "status": row.status,
-        "issued_at": row.issued_at.isoformat() if row.issued_at else None,
+        "issued_at": row.issued_at,
     }
 
 
@@ -141,9 +141,13 @@ async def lifespan(app: FastAPI):
         pub = kp["public_key_hex"]
     app.state.private_key = priv
     app.state.public_key = pub
-
     app.state.used_jtis: set = set()
     app.state.integrity_status = "INTACT"
+
+    # Populate module-level ref so endpoint helpers can access state
+    _app_state_ref["private_key"] = priv
+    _app_state_ref["public_key"] = pub
+    _app_state_ref["used_jtis"] = app.state.used_jtis
 
     yield
 
@@ -311,7 +315,7 @@ def policy_evaluate(body: PolicyEvaluateRequest, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @app.post("/tickets/issue", status_code=201)
-def issue_ticket(body: TicketIssueRequest, request: Any = None, db: Session = Depends(get_db)):
+def issue_ticket(body: TicketIssueRequest, db: Session = Depends(get_db)):
     decision_row = db.query(PolicyDecisionModel).filter(
         PolicyDecisionModel.decision_id == body.decision_id
     ).first()
@@ -348,7 +352,6 @@ def issue_ticket(body: TicketIssueRequest, request: Any = None, db: Session = De
         private_key_hex=private_key,
     )
 
-    expires_dt = _parse_dt(ticket["expires_at"])
     row = ExecutionTicket(
         ticket_id=ticket["ticket_id"],
         decision_id=ticket["decision_id"],
@@ -359,10 +362,11 @@ def issue_ticket(body: TicketIssueRequest, request: Any = None, db: Session = De
         constraints_hash=ticket["constraints_hash"],
         payload_hash=ticket["payload_hash"],
         output_schema_hash=ticket["output_schema_hash"],
-        expires_at=expires_dt,
+        expires_at=ticket["expires_at"],
         jti=ticket["jti"],
         issuer_signature=ticket["issuer_signature"],
         status=ticket["status"],
+        issued_at=ticket["issued_at"],
     )
     db.add(row)
     db.commit()
@@ -385,20 +389,6 @@ def _get_app_state_used_jtis() -> set:
     return _app_state_ref.get("used_jtis", set())
 
 
-# Override lifespan to also populate module-level ref
-@asynccontextmanager
-async def _lifespan_with_ref(app: FastAPI):
-    async with lifespan(app):
-        _app_state_ref["private_key"] = app.state.private_key
-        _app_state_ref["public_key"] = app.state.public_key
-        _app_state_ref["used_jtis"] = app.state.used_jtis
-        yield
-
-
-# Patch app lifespan after definition
-app.router.lifespan_context = _lifespan_with_ref
-
-
 # ---------------------------------------------------------------------------
 # 6. POST /actions/verify
 # ---------------------------------------------------------------------------
@@ -419,6 +409,7 @@ def actions_verify(body: VerifyRequest, db: Session = Depends(get_db)):
     agent_dict = _agent_row_to_dict(agent_row)
     used_jtis = _get_app_state_used_jtis()
 
+    system_pub = _app_state_ref.get("public_key")
     result = verify_action(
         ticket=ticket_dict,
         agent=agent_dict,
@@ -426,6 +417,7 @@ def actions_verify(body: VerifyRequest, db: Session = Depends(get_db)):
         resource=body.resource,
         payload_dict=body.payload,
         used_jtis=used_jtis,
+        system_public_key=system_pub,
     )
 
     payload_hash = calculate_payload_hash(body.payload)
@@ -532,6 +524,7 @@ def execute_demo(body: VerifyRequest, db: Session = Depends(get_db)):
     agent_dict = _agent_row_to_dict(agent_row)
     used_jtis = _get_app_state_used_jtis()
 
+    system_pub = _app_state_ref.get("public_key")
     result = verify_action(
         ticket=ticket_dict,
         agent=agent_dict,
@@ -539,6 +532,7 @@ def execute_demo(body: VerifyRequest, db: Session = Depends(get_db)):
         resource=body.resource,
         payload_dict=body.payload,
         used_jtis=used_jtis,
+        system_public_key=system_pub,
     )
 
     payload_hash = calculate_payload_hash(body.payload)

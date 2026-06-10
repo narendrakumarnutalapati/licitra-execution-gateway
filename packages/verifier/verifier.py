@@ -78,6 +78,7 @@ def verify_action(
     resource: str,
     payload_dict: dict,
     used_jtis: set,
+    system_public_key: Optional[str] = None,
 ) -> VerificationResult:
     checks_passed = {}
     diff = None
@@ -107,7 +108,8 @@ def verify_action(
         )
 
     # Check 3 — signature_valid
-    passed = verify_ticket_signature(ticket, agent["public_key"])
+    verify_key = system_public_key if system_public_key else agent["public_key"]
+    passed = verify_ticket_signature(ticket, verify_key)
     checks_passed["signature_valid"] = passed
     if not passed:
         return VerificationResult(
