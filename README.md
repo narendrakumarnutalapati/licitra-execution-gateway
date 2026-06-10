@@ -42,54 +42,54 @@ integrity violation is detected immediately.
 
 ```
 User Intent
-│
-▼
-┌─────────────────────────────────────────┐
-│  INJECTION SCAN (LLM01)                 │
-│  scan_for_injection() — 8 patterns      │
-│  INJ001-INJ008, HIGH/MEDIUM severity    │
-└────────────────┬────────────────────────┘
-                 │ PASS
-                 ▼
-┌─────────────────────────────────────────┐
-│  POLICY EVALUATION (LLM10)              │
-│  check_rate_limit() — per-agent hourly  │
-│  check_budget() — daily spend cap       │
-└────────────────┬────────────────────────┘
-                 │ ALLOWED
-                 ▼
-┌─────────────────────────────────────────┐
-│  TICKET ISSUANCE                        │
-│  Ed25519 signed execution ticket        │
-│  payload_hash, action, resource bound   │
-│  JTI for replay prevention              │
-└────────────────┬────────────────────────┘
-                 │ TICKET
-                 ▼
-┌─────────────────────────────────────────┐
-│  12-CHECK VERIFICATION (LLM06)          │
-│  1. Agent registered                    │
-│  2. Ticket exists in DB                 │
-│  3. Signature valid (Ed25519)           │
-│  4. Ticket not expired                  │
-│  5. JTI not replayed                    │
-│  6. Action matches ticket               │
-│  7. Resource matches ticket             │
-│  8. Payload hash matches ticket         │
-│  9. Output schema valid (LLM05)         │
-│  10. Injection rescan on payload        │
-│  11. Agent scope check                  │
-│  12. Decision binding                   │
-└────────────────┬────────────────────────┘
-                 │ ALLOWED or BLOCKED
-                 ▼
-┌─────────────────────────────────────────┐
-│  MMR AUDIT CHAIN                        │
-│  Every decision → MMR leaf              │
-│  SHA-256 leaf hash with position binding│
-│  Inclusion proof stored per event       │
-│  mmr_detect_tampering() on any read     │
-└─────────────────────────────────────────┘
+|
+v
++------------------------------------------+
+|  INJECTION SCAN (LLM01)                  |
+|  scan_for_injection() - 8 patterns       |
+|  INJ001-INJ008, HIGH/MEDIUM severity     |
++------------------+-----------------------+
+                   | PASS
+                   v
++------------------------------------------+
+|  POLICY EVALUATION (LLM10)               |
+|  check_rate_limit() - per-agent hourly   |
+|  check_budget() - daily spend cap        |
++------------------+-----------------------+
+                   | ALLOWED
+                   v
++------------------------------------------+
+|  TICKET ISSUANCE                         |
+|  Ed25519 signed execution ticket         |
+|  payload_hash, action, resource bound    |
+|  JTI for replay prevention               |
++------------------+-----------------------+
+                   | TICKET
+                   v
++------------------------------------------+
+|  12-CHECK VERIFICATION (LLM06)           |
+|  1.  Agent registered                    |
+|  2.  Ticket exists in DB                 |
+|  3.  Signature valid (Ed25519)           |
+|  4.  Ticket not expired                  |
+|  5.  JTI not replayed                    |
+|  6.  Action matches ticket               |
+|  7.  Resource matches ticket             |
+|  8.  Payload hash matches ticket         |
+|  9.  Output schema valid (LLM05)         |
+|  10. Injection rescan on payload         |
+|  11. Agent scope check                   |
+|  12. Decision binding                    |
++------------------+-----------------------+
+                   | ALLOWED or BLOCKED
+                   v
++------------------------------------------+
+|  MMR AUDIT CHAIN                         |
+|  Every decision -> MMR leaf              |
+|  SHA-256 leaf hash with position binding |
+|  Inclusion proof stored per event        |
+|  mmr_detect_tampering() on any read      |
++------------------------------------------+
 ```
 
 ## Quick Start

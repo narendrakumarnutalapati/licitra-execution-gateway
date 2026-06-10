@@ -15,33 +15,37 @@ A Merkle Mountain Range is an append-only sequence of perfect binary trees of de
 
 Example after 7 leaves:
 
+```
 Hash(0,1,2,3)        Hash(4,5)   Hash(6)
      /      \            /    \       |
 Hash(0,1)  Hash(2,3)  Hash(4) Hash(5) Leaf6
  /    \     /    \
-
 Leaf0  Leaf1 Leaf2 Leaf3  Leaf4  Leaf5
+
 Peaks: [Hash(0,1,2,3), Hash(4,5), Hash(6)]
 Root:  SHA-256(Hash(0,1,2,3) || Hash(4,5) || Hash(6))
+```
 
 ## Leaf Hash Construction
 
 CRITICAL: leaf_index MUST be bound into leaf_hash.
 Without this, an attacker can reorder leaves while keeping individual hashes valid.
 
+```
 leaf_hash = SHA-256(
-str(leaf_index)
-+ canonical_json({
-"event_type": "VERIFY_BLOCKED",
-"agent_id": "...",
-"action": "send_email",
-"resource": "cfo@company.com",
-"decision": "BLOCKED",
-"payload_hash": "sha256:...",
-"ticket_id": "...",
-"timestamp": "2026-06-09T14:32:01Z"
-})
+  str(leaf_index)
+  + canonical_json({
+    "event_type": "VERIFY_BLOCKED",
+    "agent_id": "...",
+    "action": "send_email",
+    "resource": "cfo@company.com",
+    "decision": "BLOCKED",
+    "payload_hash": "sha256:...",
+    "ticket_id": "...",
+    "timestamp": "2026-06-09T14:32:01Z"
+  })
 )
+```
 
 Canonical JSON: keys sorted alphabetically, no whitespace, UTF-8 encoded.
 

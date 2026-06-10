@@ -2,6 +2,7 @@
 
 ## System Overview
 
+```
 [AI Agent]
 |
 v
@@ -49,6 +50,7 @@ POST /actions/execute-demo
 [packages/evidence]
 |- generate_evidence_json()
 |- generate_evidence_pdf()
+```
 
 ## Component Map
 

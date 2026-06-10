@@ -10,6 +10,7 @@ All timestamps: UTC ISO-8601
 Returns system health including MMR status.
 
 Response 200:
+```json
 {
   "status": "ok",
   "version": "1.0",
@@ -17,6 +18,7 @@ Response 200:
   "mmr_leaves": 47,
   "integrity": "INTACT"
 }
+```
 
 ---
 
@@ -24,6 +26,7 @@ Response 200:
 Register an AI agent with scope, output schemas, and rate limits.
 
 Request:
+```json
 {
   "agent_id": "uuid",
   "agent_name": "email_agent",
@@ -48,18 +51,23 @@ Request:
   "max_daily_budget": 100.0,
   "action_cost_weights": {"send_email": 1.0}
 }
+```
 
 Response 200:
+```json
 {
   "agent_id": "uuid",
   "registered": true,
   "public_key_fingerprint": "sha256:..."
 }
+```
 
 Errors:
+```
 400: {"error": "AGENT_ALREADY_EXISTS"}
 400: {"error": "INVALID_PUBLIC_KEY"}
 400: {"error": "INVALID_OUTPUT_SCHEMA"}
+```
 
 ---
 
@@ -67,6 +75,7 @@ Errors:
 Create intent. Injection scan runs automatically.
 
 Request:
+```json
 {
   "user_id": "narendra",
   "agent_id": "uuid",
@@ -76,16 +85,20 @@ Request:
   "constraints": {"max_recipients": 1},
   "expires_at": "2026-06-09T16:00:00Z"
 }
+```
 
 Response 200:
+```json
 {
   "intent_id": "uuid",
   "status": "PENDING",
   "injection_scan": "PASS",
   "created_at": "2026-06-09T14:00:00Z"
 }
+```
 
 Response 403 (injection detected):
+```json
 {
   "error": "INJECTION_DETECTED",
   "patterns_found": [
@@ -94,6 +107,7 @@ Response 403 (injection detected):
   "intent_id": "uuid",
   "status": "INJECTION_BLOCKED"
 }
+```
 
 ---
 
@@ -101,12 +115,15 @@ Response 403 (injection detected):
 Evaluate intent against agent policy including rate limits and budget.
 
 Request:
+```json
 {
   "intent_id": "uuid",
   "agent_id": "uuid"
 }
+```
 
 Response 200:
+```json
 {
   "decision_id": "uuid",
   "allowed": true,
@@ -117,8 +134,10 @@ Response 200:
   "current_hourly_count": 12,
   "current_daily_count": 47
 }
+```
 
 Response 200 (denied):
+```json
 {
   "decision_id": "uuid",
   "allowed": false,
@@ -126,6 +145,7 @@ Response 200 (denied):
   "hourly_count": 100,
   "hourly_limit": 100
 }
+```
 
 ---
 
@@ -133,6 +153,7 @@ Response 200 (denied):
 Issue signed execution ticket. Only succeeds if policy decision is allowed.
 
 Request:
+```json
 {
   "decision_id": "uuid",
   "agent_id": "uuid",
@@ -142,8 +163,10 @@ Request:
     "body": "Please find attached..."
   }
 }
+```
 
 Response 200:
+```json
 {
   "ticket_id": "uuid",
   "jti": "uuid",
@@ -154,10 +177,13 @@ Response 200:
   "expires_at": "2026-06-09T14:15:00Z",
   "issuer_signature": "hex..."
 }
+```
 
 Errors:
+```
 400: {"error": "POLICY_DECISION_DENIED"}
 400: {"error": "DECISION_NOT_FOUND"}
+```
 
 ---
 
@@ -165,6 +191,7 @@ Errors:
 Run all 12 checks. Returns diff on any mismatch. Does not execute.
 
 Request:
+```json
 {
   "ticket_id": "uuid",
   "agent_id": "uuid",
@@ -176,8 +203,10 @@ Request:
     "body": "Please find attached..."
   }
 }
+```
 
 Response 200 (allowed):
+```json
 {
   "allowed": true,
   "reason": "All 12 checks passed",
@@ -199,8 +228,10 @@ Response 200 (allowed):
   "mmr_leaf_index": 47,
   "mmr_proof": ["sha256:...", "sha256:...", "sha256:...", "sha256:..."]
 }
+```
 
 Response 200 (blocked):
+```json
 {
   "allowed": false,
   "reason": "PAYLOAD_TAMPERED",
@@ -213,6 +244,7 @@ Response 200 (blocked):
   "evidence_id": "uuid",
   "mmr_leaf_index": 48
 }
+```
 
 ---
 
@@ -222,19 +254,23 @@ Mock tool execution. Only executes if verify passes. Increments rate counters af
 Request: same as /actions/verify
 
 Response 200 (executed):
+```json
 {
   "executed": true,
   "result": "MOCK_SUCCESS",
   "evidence_id": "uuid",
   "mmr_leaf_index": 47
 }
+```
 
 Response 200 (blocked):
+```json
 {
   "executed": false,
   "reason": "VERIFICATION_FAILED",
   "evidence_id": "uuid"
 }
+```
 
 ---
 
@@ -244,6 +280,7 @@ Returns last 50 audit events with MMR leaf indices.
 Query params: ?limit=50&offset=0
 
 Response 200:
+```json
 {
   "events": [
     {
@@ -260,6 +297,7 @@ Response 200:
   "mmr_root": "sha256:...",
   "total_leaves": 48
 }
+```
 
 ---
 
@@ -267,12 +305,14 @@ Response 200:
 Current MMR root hash and leaf count. Public endpoint. No auth required.
 
 Response 200:
+```json
 {
   "mmr_root": "sha256:abc...",
   "leaf_count": 48,
   "integrity": "INTACT",
   "last_check": "2026-06-09T14:00:00Z"
 }
+```
 
 ---
 
@@ -280,26 +320,32 @@ Response 200:
 Verify MMR inclusion proof. Pure hash computation. No database access. Anyone can call.
 
 Request:
+```json
 {
   "leaf_hash": "sha256:...",
   "proof": ["sha256:...", "sha256:...", "sha256:...", "sha256:..."],
   "root": "sha256:...",
   "leaf_index": 47
 }
+```
 
 Response 200 (valid):
+```json
 {
   "valid": true,
   "leaf_index": 47,
   "proof_size": 4,
   "message": "Event inclusion verified. This event exists in the audit log and is untampered."
 }
+```
 
 Response 200 (invalid):
+```json
 {
   "valid": false,
   "reason": "Root hash mismatch. Provided proof does not verify against provided root."
 }
+```
 
 ---
 
@@ -307,6 +353,7 @@ Response 200 (invalid):
 Full evidence JSON.
 
 Response 200:
+```json
 {
   "evidence_id": "uuid",
   "intent_id": "uuid",
@@ -334,6 +381,7 @@ Response 200:
   "mmr_proof_size": 4,
   "created_at": "2026-06-09T14:32:01Z"
 }
+```
 
 ---
 
@@ -347,12 +395,14 @@ Content-Type: application/pdf
 Returns MMR inclusion proof only.
 
 Response 200:
+```json
 {
   "leaf_hash": "sha256:...",
   "proof": ["sha256:...", "sha256:...", "sha256:...", "sha256:..."],
   "root": "sha256:...",
   "leaf_index": 47
 }
+```
 
 ---
 
@@ -360,6 +410,7 @@ Response 200:
 Aggregate counters by verification outcome and attack category.
 
 Response 200:
+```json
 {
   "total_verifications": 91,
   "allowed_count": 44,
@@ -371,6 +422,7 @@ Response 200:
   "mmr_leaf_count": 91,
   "mmr_root": "sha256:..."
 }
+```
 
 ---
 
@@ -378,6 +430,7 @@ Response 200:
 Persists current metrics to the metrics_snapshots table. Call to create a point-in-time record.
 
 Response 201:
+```json
 {
   "snapshot_id": "uuid",
   "snapshot_at": "2026-06-10T20:35:05Z",
@@ -390,6 +443,7 @@ Response 201:
   "mmr_leaf_count": 91,
   "mmr_root": "sha256:..."
 }
+```
 
 ---
 
@@ -417,6 +471,7 @@ Scenarios:
 - POST /demo/full — runs all scenarios in sequence, returns array
 
 Response 200:
+```json
 {
   "scenario": "Tampered Payload",
   "owasp": "LLM06",
@@ -427,3 +482,4 @@ Response 200:
   "mmr_leaf_index": 47,
   "duration_ms": 12
 }
+```
