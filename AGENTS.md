@@ -53,3 +53,16 @@
 ## Test Counts
 
 Test counts: 54 unit + 37 integration = 91 total
+
+## Research Alignment
+
+This gateway implements a subset of the LICITRA research series.
+
+Implemented: execution ticket layer, MMR ledger primitive,
+12-check verification, LLM01/05/06/10 OWASP coverage.
+
+Not implemented in v1.0: witnessed transparency layer,
+epoch anchoring, PII detection, delegation escalation
+blocking.
+
+See README.md ## Implementation Scope for full details.

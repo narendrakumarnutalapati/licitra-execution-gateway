@@ -180,6 +180,34 @@ This gateway implements the LICITRA framework:
 
 OWASP GenAI Data Security Risks v1.0 — credited reviewer
 
+## Implementation Scope
+
+This gateway implements the execution ticket layer and
+MMR ledger primitive from the LICITRA research series:
+
+**Implemented from LICITRA-SENTRY:**
+- Ed25519 signed execution tickets with payload hash binding
+- JTI-based replay attack prevention
+- Payload modification detection (Check 8)
+- 12-check cryptographic verification pipeline
+- Tamper-evident audit chain with inclusion proofs
+
+**Implemented from LICITRA-MMR-CORE:**
+- Merkle Mountain Range append-only ledger
+- O(log N) inclusion proofs verifiable by third parties
+- Position-binding leaf hashes preventing swap attacks
+- `mmr_detect_tampering()` on every read
+
+**Not yet implemented (roadmap v2.0):**
+- Witnessed transparency layer — CT-style external witnesses
+  co-signing epoch root hashes. Without witnesses,
+  tamper-evidence requires operator honesty. This is a
+  known limitation of v1.0.
+- Epoch anchoring — committing MMR root hashes to an
+  external transparency log or blockchain
+- PII exfiltration detection
+- Delegation escalation blocking
+
 ## Stack
 
 Python 3.12 · FastAPI · PostgreSQL · SQLAlchemy ·

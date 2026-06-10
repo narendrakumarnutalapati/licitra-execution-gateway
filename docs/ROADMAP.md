@@ -33,6 +33,22 @@ Core execution integrity flow end to end:
 - Horizontal scaling with load balancer
 - Automated backup strategy
 
+### Witnessed Transparency Layer
+Implementation of the CT-style witness network described
+in LICITRA-SENTRY v0.2. External witness nodes co-sign
+epoch root hashes. Tamper-evidence holds even under
+operator compromise unless all witnesses collude.
+Requires: witness node infrastructure, epoch commit
+protocol, witness receipt verification endpoint.
+
+### Epoch Anchoring
+Commit MMR root hashes to an external transparency log
+or public blockchain at configurable intervals.
+Current state: root hashes are generated and stored
+in PostgreSQL only (single-operator trust).
+Target state: root hashes anchored externally,
+verifiable without trusting the operator.
+
 ## Non-Goals (Permanent)
 - NOT a governance platform
 - NOT an identity management system

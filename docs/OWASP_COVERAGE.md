@@ -47,3 +47,22 @@ Output truthfulness, factual grounding, and hallucination detection require eval
 
 ## Positioning Statement
 LICITRA claims PRIMARY coverage for LLM01, LLM05, LLM06, LLM10 only. Every claim is verifiable directly from the codebase. We do not claim broad OWASP coverage because broad claims that cannot be verified are worse than narrow claims that can.
+
+## Single-Operator Trust Model
+
+LICITRA v1.0 is a single-operator forensic integrity
+primitive. It provides:
+- Detection of post-hoc database modifications
+- Cryptographic binding of approved actions to execution
+- O(log N) inclusion proofs verifiable by third parties
+
+It does not provide:
+- Byzantine fault tolerance
+- Distributed consensus
+- Protection against a compromised operator who controls
+  both the application and the database
+- Confidentiality guarantees
+
+The witnessed transparency layer (planned v2.0) addresses
+the operator trust assumption by introducing external
+co-signers on epoch root hashes.

@@ -53,6 +53,21 @@ Based on publicly available documentation as of June 2026, no competitor publicl
 3. Verification Diff Engine showing field-level differences between approved and executed
 4. Tamper-evident MMR evidence chain with O(log N) inclusion proofs verifiable by third party
 
+## Known Limitations (v1.0)
+
+The current gateway operates as a single-operator system.
+Tamper-evidence in v1.0 requires trusting the operator
+not to modify the PostgreSQL database and MMR state.
+The `mmr_detect_tampering()` function detects modifications
+after the fact but cannot prevent a compromised operator
+from replacing both the event data and the stored hashes
+simultaneously.
+
+The witnessed transparency layer described in
+LICITRA-SENTRY v0.2 would address this by requiring
+external witness co-signatures on epoch root hashes.
+This is planned for v2.0.
+
 ## Regulatory Tailwind
 - EU AI Act high-risk obligations: August 2026
 - Colorado AI Act: June 2026 — enforceable now
