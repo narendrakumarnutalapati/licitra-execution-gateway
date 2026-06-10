@@ -1,106 +1,118 @@
 # LICITRA Execution Gateway
 
-Cryptographic execution integrity for AI agents.
+A cryptographic execution integrity gateway for AI agents that proves every action was authorized, untampered, and executed exactly as approved.
 
-LICITRA proves that every AI agent action was authorized, untampered, replay-resistant, and executed as approved — and produces an independently verifiable cryptographic proof of that fact.
+It solves the gap between *"was this agent allowed to act?"* and *"did the action that actually executed match — byte for byte — what was approved?"*
 
-## The Problem
+## What It Does
 
-Most AI agent security tools answer: *"Is this agent allowed to do this?"*
+- **Stops prompt injection before execution** — `scan_for_injection()` runs on every intent at creation and again at every verify call, blocking LLM01 attacks before any ticket is issued or action executed
+- **Enforces output schema contracts** — every agent declares its output schema at registration; `validate_output_schema()` runs at verify check 9, blocking extra fields like `bcc: exfil@shadow.com` (LLM05)
+- **Prevents payload tampering, replay, and scope escalation** — 12 sequential cryptographic checks bind the exact approved payload to the Ed25519-signed ticket; any mismatch, replay, or action substitution is blocked at verify time (LLM06)
+- **Enforces per-agent rate limits and budget caps** — `check_rate_limit()` and `check_budget()` run at every policy evaluation; agents cannot exceed their declared hourly action count or daily spend (LLM10)
 
-LICITRA answers a harder question: *"Did the action that actually executed match — byte for byte — what was approved?"*
-
-An agent can be fully authenticated, fully policy-compliant, fully logged — and still execute an unauthorized action. LICITRA closes that gap.
-
-## The Flow
-
-```
-Intent (LLM01 scan) → Policy (LLM10 rate limit) → Signed Ed25519 Ticket →
-12-Check Verification (LLM05 schema + LLM01 rescan) →
-MMR Audit Append → Tamper-Evident Evidence with Inclusion Proof
-```
-
-## OWASP LLM Coverage
-
-| Risk | Name | Coverage |
-|---|---|---|
-| LLM01 | Prompt Injection | PRIMARY — scan at intent + rescan at verify |
-| LLM05 | Improper Output Handling | PRIMARY — schema validation before execution |
-| LLM06 | Excessive Agency | PRIMARY — CORE — full 12-check verify cycle |
-| LLM10 | Unbounded Consumption | PRIMARY — rate limits + budget caps per agent |
-| LLM02,03,04,07,08,09 | — | Out of scope — see docs/OWASP_COVERAGE.md |
-
-## Why Not Just MCP Permissions?
-
-MCP permissions answer: can this agent call this tool?
-
-LICITRA answers: did the exact payload of that call match what was approved?
-
-These are different problems. See [docs/MCP_POSITIONING.md](docs/MCP_POSITIONING.md).
-
-## Enterprise Integration
+## Architecture
 
 ```
-[Identity]     Okta / Silverfort / Multifactor  →  identifies the agent
-[Policy]       Microsoft AGT / Cerbos            →  decides what is allowed
-[Credentials]  Clawvisor / Aembit               →  vaults secrets
-[LICITRA]      Execution Gateway                →  proves exact action was approved
-[Execution]    Google Workspace / Salesforce / MCP Tools
+Agent
+  │
+  ▼
+POST /intent/create  ──[LLM01: injection scan]──► BLOCKED if injection found
+  │
+  ▼
+POST /policy/evaluate ─[LLM10: rate limit + budget]─► BLOCKED if over limit
+  │
+  ▼
+POST /tickets/issue  ──[Ed25519 signed ticket, payload hash bound]
+  │
+  ▼
+POST /actions/verify ── 12 checks in order:
+  │  Check  1: agent_registered          [LLM06]
+  │  Check  2: ticket_exists             [LLM06]
+  │  Check  3: signature_valid           [LLM06]
+  │  Check  4: not_expired               [LLM06]
+  │  Check  5: jti_not_replayed          [LLM06]
+  │  Check  6: action_matches            [LLM06]
+  │  Check  7: resource_matches          [LLM06]
+  │  Check  8: payload_hash_matches      [LLM06]
+  │  Check  9: output_schema_valid       [LLM05]
+  │  Check 10: injection_rescan          [LLM01]
+  │  Check 11: agent_scope               [LLM06]
+  │  Check 12: decision_binding          [LLM06]
+  │
+  ▼
+MMR Audit Append ── leaf_index bound into leaf_hash (position-swap resistant)
+  │
+  ▼
+GET /evidence/{id} ── tamper-evident record with MMR inclusion proof
 ```
 
-## Regulatory Context
-
-- EU AI Act high-risk obligations: August 2026
-- Colorado AI Act: enforceable June 2026
-- LICITRA evidence chain is a direct compliance artifact at the action level
-
-## Quickstart
+## Quick Start
 
 ```bash
-make setup
+git clone https://github.com/narendrakumarnutalapati/licitra-execution-gateway
+cd licitra-execution-gateway
+cp .env.example .env
 make up
 make seed
-make demo-full
+# Open http://localhost:5173
 ```
 
-## Demo Commands
+## Run the Attack Demos
 
 ```bash
-make demo-authorized      # ALLOWED + MMR proof + evidence_id
-make demo-tamper          # BLOCKED + payload diff        [LLM06]
-make demo-injection       # BLOCKED at intent creation    [LLM01]
-make demo-schema          # BLOCKED at verify check 9     [LLM05]
-make demo-ratelimit       # 5 ALLOWED then BLOCKED        [LLM10]
-make demo-replay          # BLOCKED JTI replayed          [LLM06]
-make demo-overscope       # BLOCKED action mismatch       [LLM06]
-make demo-expired         # BLOCKED ticket expired        [LLM06]
-make demo-fake            # BLOCKED agent not registered  [LLM06]
-make demo-mmr-tamper      # MMR INTEGRITY VIOLATION
-make demo-full            # all 10 attacks in sequence
+make demo-full        # All 10 attacks in sequence
+make demo-tamper      # Tampered payload
+make demo-injection   # Prompt injection
+make demo-schema      # Schema violation
+make demo-ratelimit   # Rate limiting
 ```
+
+Or open [http://localhost:5173/demo](http://localhost:5173/demo) and click **Run Attack** from the browser.
+
+## API Reference
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/healthz` | Health check, MMR integrity status |
+| `POST` | `/agents/register` | Register an agent with allowed actions and output schema |
+| `POST` | `/intent/create` | Create intent — runs injection scan |
+| `POST` | `/policy/evaluate` | Evaluate policy — rate limit + budget check |
+| `POST` | `/tickets/issue` | Issue Ed25519-signed execution ticket |
+| `POST` | `/actions/verify` | Run 12-check verification, append to MMR, emit evidence |
+| `POST` | `/actions/execute-demo` | Combined verify + execute for demo agents |
+| `GET` | `/audit` | List verification records |
+| `GET` | `/audit/root` | MMR root hash + integrity status |
+| `POST` | `/audit/verify-proof` | Manually verify an MMR inclusion proof |
+| `GET` | `/evidence/{id}` | Full evidence record with MMR proof |
+| `GET` | `/evidence/{id}/pdf` | Downloadable PDF evidence report |
+| `GET` | `/evidence/{id}/proof` | Raw MMR proof fields only |
+| `GET` | `/metrics` | Aggregate counters: allowed, blocked, by risk category |
+
+## OWASP Coverage
+
+| Risk | Coverage | How |
+|------|----------|-----|
+| LLM01 | Full | `scan_for_injection()` at intent creation + re-scan at verify check 10 |
+| LLM05 | Full | Output schema declared at registration; `validate_output_schema()` at verify check 9 |
+| LLM06 | Full | 12-check cryptographic verification cycle — payload hash, signature, JTI, scope |
+| LLM10 | Full | Per-agent hourly action limits + daily budget caps enforced at policy evaluation |
+| LLM02–04, 07–09 | Out of scope | See [docs/OWASP_COVERAGE.md](docs/OWASP_COVERAGE.md) |
 
 ## Research Foundation
 
-This implementation is built on two published research primitives:
+This gateway implements the LICITRA framework:
 
-- [LICITRA-SENTRY](https://github.com/narendrakumarnutalapati/licitra-sentry) — pre-execution enforcement layer
-- [LICITRA-MMR](https://github.com/narendrakumarnutalapati/licitra-mmr-core) — tamper-evident MMR audit chain
+- **LICITRA-SENTRY** — pre-execution enforcement layer: [https://doi.org/10.5281/zenodo.18860290](https://doi.org/10.5281/zenodo.18860290)
+- **LICITRA-MMR-CORE** — tamper-evident MMR audit chain: [https://doi.org/10.5281/zenodo.18843032](https://doi.org/10.5281/zenodo.18843032)
 
-## Standards
+## Test Suite
 
-- Reviewer: [OWASP GenAI Data Security Risks & Mitigations v1.0 (2026)](https://genai.owasp.org)
-- Contributor: OWASP GenAI Best Practices v2
-- Reference: OWASP Issue #802 — execution integrity gap in agentic systems
+81+ unit tests covering all 7 packages.
 
-## Stack
-
-- Backend: Python 3.12 + FastAPI
-- Database: PostgreSQL + SQLAlchemy + Alembic
-- Crypto: Ed25519 via PyNaCl + SHA-256
-- Audit: Merkle Mountain Range (LICITRA-MMR)
-- Tests: pytest (81+ tests)
-- Frontend: React + Vite
-- Container: Docker Compose
+```bash
+make test
+```
 
 ## License
 

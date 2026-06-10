@@ -25,6 +25,7 @@ services:
       - ./conftest.py:/app/conftest.py
       - ./apps/demo-agent:/app/apps/demo-agent
       - ./examples:/app/examples
+      - ./scripts:/app/scripts
     depends_on:
       db:
         condition: service_healthy

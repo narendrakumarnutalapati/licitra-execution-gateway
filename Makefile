@@ -18,7 +18,7 @@ test:
 	docker compose exec api pytest tests/ -v
 
 seed:
-	@echo "seed: not yet implemented"
+	docker compose exec api python scripts/seed.py
 
 demo-authorized:
 	docker compose exec api python apps/demo-agent/authorized_action.py

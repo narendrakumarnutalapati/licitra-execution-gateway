@@ -73,7 +73,11 @@ export default function Actions() {
             {events.map(e => {
               const owasp = owaspFromReason(e.reason, e.allowed)
               return (
-                <tr key={e.record_id} onClick={() => e.evidence_id && nav(`/evidence/${e.evidence_id}`)}>
+                <tr
+                  key={e.record_id}
+                  style={{ cursor: e.evidence_id ? 'pointer' : 'default' }}
+                  onClick={() => e.evidence_id && nav(`/evidence/${e.evidence_id}`)}
+                >
                   <td className="mono">{fmt(e.verified_at)}</td>
                   <td className="mono">{(e.agent_id || '').slice(0, 8)}</td>
                   <td>{e.action_submitted}</td>
@@ -86,7 +90,12 @@ export default function Actions() {
                   <td><OWASPBadge label={owasp} /></td>
                   <td>
                     {e.evidence_id
-                      ? <span style={{ color: 'var(--blue)', fontSize: 11 }} className="mono">{e.evidence_id.slice(0, 8)}…</span>
+                      ? <a
+                          href={`/evidence/${e.evidence_id}`}
+                          style={{ color: 'var(--blue)', fontSize: 11, textDecoration: 'underline' }}
+                          className="mono"
+                          onClick={ev => ev.stopPropagation()}
+                        >{e.evidence_id.slice(0, 8)}…</a>
                       : '—'}
                   </td>
                 </tr>
