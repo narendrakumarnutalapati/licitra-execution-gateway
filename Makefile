@@ -1,4 +1,4 @@
-.PHONY: setup up down test seed \
+.PHONY: setup up down test test-integration test-all seed \
         demo-authorized demo-tamper demo-replay \
         demo-overscope demo-expired demo-fake \
         demo-injection demo-schema demo-ratelimit \
@@ -15,6 +15,12 @@ down:
 	docker compose down
 
 test:
+	docker compose exec api pytest tests/unit/ -v
+
+test-integration:
+	docker compose exec api pytest tests/integration/ -v
+
+test-all:
 	docker compose exec api pytest tests/ -v
 
 seed:
