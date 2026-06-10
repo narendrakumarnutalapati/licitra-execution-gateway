@@ -21,43 +21,74 @@ seed:
 	@echo "seed: not yet implemented"
 
 demo-authorized:
-	@echo "demo-authorized: not yet implemented"
+	docker compose exec api python apps/demo-agent/authorized_action.py
 
 demo-tamper:
-	@echo "demo-tamper: not yet implemented"
+	docker compose exec api python apps/demo-agent/tampered_payload_attack.py
 
 demo-replay:
-	@echo "demo-replay: not yet implemented"
+	docker compose exec api python apps/demo-agent/replay_attack.py
 
 demo-overscope:
-	@echo "demo-overscope: not yet implemented"
+	docker compose exec api python apps/demo-agent/over_scoped_action.py
 
 demo-expired:
-	@echo "demo-expired: not yet implemented"
+	docker compose exec api python apps/demo-agent/expired_ticket.py
 
 demo-fake:
-	@echo "demo-fake: not yet implemented"
+	docker compose exec api python apps/demo-agent/fake_agent_attack.py
 
 demo-injection:
-	@echo "demo-injection: not yet implemented"
+	docker compose exec api python apps/demo-agent/injection_attack.py
 
 demo-schema:
-	@echo "demo-schema: not yet implemented"
+	docker compose exec api python apps/demo-agent/schema_violation_attack.py
 
 demo-ratelimit:
-	@echo "demo-ratelimit: not yet implemented"
+	docker compose exec api python apps/demo-agent/rate_limit_attack.py
 
 demo-mmr-tamper:
-	@echo "demo-mmr-tamper: not yet implemented"
+	docker compose exec api python apps/demo-agent/mmr_tamper_demo.py
 
 demo-calendar:
-	@echo "demo-calendar: not yet implemented"
+	docker compose exec api python examples/google-calendar/run_calendar_demo.py
 
 demo-gmail:
-	@echo "demo-gmail: not yet implemented"
+	docker compose exec api python examples/gmail/run_gmail_demo.py
 
 demo-mcp:
-	@echo "demo-mcp: not yet implemented"
+	docker compose exec api python examples/mcp-tool/run_mcp_demo.py
 
 demo-full:
-	@echo "demo-full: not yet implemented"
+	@echo "============================================================"
+	@echo "  LICITRA Execution Gateway — Full Attack + Use Case Suite"
+	@echo "============================================================"
+	docker compose exec api python apps/demo-agent/authorized_action.py
+	@echo "------------------------------------------------------------"
+	docker compose exec api python apps/demo-agent/tampered_payload_attack.py
+	@echo "------------------------------------------------------------"
+	docker compose exec api python apps/demo-agent/replay_attack.py
+	@echo "------------------------------------------------------------"
+	docker compose exec api python apps/demo-agent/over_scoped_action.py
+	@echo "------------------------------------------------------------"
+	docker compose exec api python apps/demo-agent/expired_ticket.py
+	@echo "------------------------------------------------------------"
+	docker compose exec api python apps/demo-agent/fake_agent_attack.py
+	@echo "------------------------------------------------------------"
+	docker compose exec api python apps/demo-agent/injection_attack.py
+	@echo "------------------------------------------------------------"
+	docker compose exec api python apps/demo-agent/schema_violation_attack.py
+	@echo "------------------------------------------------------------"
+	docker compose exec api python apps/demo-agent/rate_limit_attack.py
+	@echo "------------------------------------------------------------"
+	docker compose exec api python apps/demo-agent/mmr_tamper_demo.py
+	@echo "------------------------------------------------------------"
+	docker compose exec api python examples/google-calendar/run_calendar_demo.py
+	@echo "------------------------------------------------------------"
+	docker compose exec api python examples/gmail/run_gmail_demo.py
+	@echo "------------------------------------------------------------"
+	docker compose exec api python examples/mcp-tool/run_mcp_demo.py
+	@echo "============================================================"
+	@echo "  MMR Summary"
+	@echo "============================================================"
+	docker compose exec api python -c "import httpx; r = httpx.get('http://localhost:8000/audit/root'); d = r.json(); print(f'Total leaves: {d[\"leaf_count\"]}'); print(f'MMR root: {d[\"mmr_root\"]}'); print(f'Integrity: {d[\"integrity\"]}')"

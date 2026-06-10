@@ -50,7 +50,7 @@ from packages.audit_chain.audit_chain import (
     get_inclusion_proof, get_current_root,
 )
 from packages.evidence.evidence import generate_evidence_json, generate_evidence_pdf
-from packages.mmr.mmr import mmr_size, mmr_verify_proof
+from packages.mmr.mmr import mmr_size, mmr_verify_proof, mmr_leaves
 
 
 # ---------------------------------------------------------------------------
@@ -829,4 +829,30 @@ def get_metrics(db: Session = Depends(get_db)):
         "mmr_leaf_count": mmr_size(),
         "mmr_root": get_current_root(),
     }
+
+
+# ---------------------------------------------------------------------------
+# DEBUG: POST /debug/tamper-mmr  (only available when DEBUG=true)
+# ---------------------------------------------------------------------------
+
+if os.getenv("DEBUG", "").lower() == "true":
+    from pydantic import BaseModel as _BaseModel
+
+    class _TamperRequest(_BaseModel):
+        leaf_index: int
+        new_data: Dict
+
+    @app.post("/debug/tamper-mmr")
+    def debug_tamper_mmr(body: _TamperRequest):
+        if body.leaf_index < 0 or body.leaf_index >= len(mmr_leaves):
+            raise HTTPException(
+                status_code=400,
+                detail=f"leaf_index {body.leaf_index} out of range (size={len(mmr_leaves)})",
+            )
+        mmr_leaves[body.leaf_index]["event_data"] = body.new_data
+        return {
+            "tampered": True,
+            "leaf_index": body.leaf_index,
+            "new_data": body.new_data,
+        }
 

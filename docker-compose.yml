@@ -23,6 +23,8 @@ services:
       - ./tests:/app/tests
       - ./packages:/app/packages
       - ./conftest.py:/app/conftest.py
+      - ./apps/demo-agent:/app/apps/demo-agent
+      - ./examples:/app/examples
     depends_on:
       db:
         condition: service_healthy
