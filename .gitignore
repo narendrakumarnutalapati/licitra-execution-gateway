@@ -12,3 +12,4 @@ venv/
 .venv/
 *.log
 docs/
+*.pdf
