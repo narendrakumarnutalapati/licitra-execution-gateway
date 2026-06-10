@@ -106,6 +106,21 @@ class VerificationRecord(Base):
     verified_at = Column(DateTime(timezone=True), default=_now)
 
 
+class MetricsSnapshot(Base):
+    __tablename__ = "metrics_snapshots"
+
+    snapshot_id = Column(String, primary_key=True)
+    snapshot_at = Column(DateTime(timezone=True), default=_now)
+    total_verifications = Column(Integer, nullable=False, default=0)
+    allowed_count = Column(Integer, nullable=False, default=0)
+    blocked_count = Column(Integer, nullable=False, default=0)
+    injection_blocks = Column(Integer, nullable=False, default=0)
+    schema_blocks = Column(Integer, nullable=False, default=0)
+    rate_limit_blocks = Column(Integer, nullable=False, default=0)
+    mmr_leaf_count = Column(Integer, nullable=False, default=0)
+    mmr_root = Column(String, nullable=False, default="")
+
+
 class Evidence(Base):
     __tablename__ = "evidence"
 

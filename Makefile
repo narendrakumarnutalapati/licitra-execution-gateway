@@ -1,4 +1,4 @@
-.PHONY: setup up down test test-integration test-all seed \
+.PHONY: setup up down test test-integration test-all seed snapshot history \
         demo-authorized demo-tamper demo-replay \
         demo-overscope demo-expired demo-fake \
         demo-injection demo-schema demo-ratelimit \
@@ -21,10 +21,16 @@ test-integration:
 	docker compose exec api pytest tests/integration/ -v
 
 test-all:
-	docker compose exec api pytest tests/ -v
+	docker compose exec api pytest tests/ -v --tb=short
 
 seed:
 	docker compose exec api python scripts/seed.py
+
+snapshot:
+	docker compose exec api python -c "import httpx; r=httpx.post('http://localhost:8000/metrics/snapshot'); print(r.json())"
+
+history:
+	docker compose exec api python -c "import httpx; r=httpx.get('http://localhost:8000/metrics/history'); [print(s) for s in r.json()]"
 
 demo-authorized:
 	docker compose exec api python apps/demo-agent/authorized_action.py

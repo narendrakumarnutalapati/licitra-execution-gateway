@@ -1,5 +1,8 @@
+import asyncio
 import hashlib
 import io
+import json as json_module
+import logging
 import os
 import subprocess
 import sys
@@ -7,6 +10,26 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict
 from uuid import uuid4
+
+
+class JSONFormatter(logging.Formatter):
+    def format(self, record):
+        log_record = {
+            "timestamp": self.formatTime(record),
+            "level": record.levelname,
+            "message": record.getMessage(),
+            "module": record.module,
+        }
+        if record.exc_info:
+            log_record["exception"] = self.formatException(record.exc_info)
+        return json_module.dumps(log_record)
+
+
+_log_handler = logging.StreamHandler()
+_log_handler.setFormatter(JSONFormatter())
+logger = logging.getLogger("licitra")
+logger.setLevel(logging.INFO)
+logger.addHandler(_log_handler)
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,7 +45,7 @@ sys.path.insert(0, "/app")
 try:
     from apps.api.database import Base, engine, get_db, SessionLocal
     from apps.api.models import (
-        Agent, Evidence, ExecutionTicket, Intent,
+        Agent, Evidence, ExecutionTicket, Intent, MetricsSnapshot,
         PolicyDecision as PolicyDecisionModel, VerificationRecord,
     )
     from apps.api.schemas import (
@@ -32,7 +55,7 @@ try:
 except ImportError:
     from database import Base, engine, get_db, SessionLocal  # type: ignore
     from models import (  # type: ignore
-        Agent, Evidence, ExecutionTicket, Intent,
+        Agent, Evidence, ExecutionTicket, Intent, MetricsSnapshot,
         PolicyDecision as PolicyDecisionModel, VerificationRecord,
     )
     from schemas import (  # type: ignore
@@ -119,8 +142,23 @@ def _parse_dt(value: str) -> datetime:
 # Lifespan
 # ---------------------------------------------------------------------------
 
+async def background_health_check():
+    while True:
+        await asyncio.sleep(60)
+        try:
+            integrity_result = verify_audit_integrity()
+            if not integrity_result["intact"]:
+                logger.warning("MMR_INTEGRITY_VIOLATION detected")
+            else:
+                logger.info("mmr_integrity_check passed")
+            _take_metrics_snapshot()
+        except Exception as e:
+            logger.error(f"background_health_check error: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("LICITRA gateway starting")
     # Run alembic upgrade head
     try:
         subprocess.run(
@@ -150,7 +188,13 @@ async def lifespan(app: FastAPI):
     _app_state_ref["public_key"] = pub
     _app_state_ref["used_jtis"] = app.state.used_jtis
 
+    task = asyncio.create_task(background_health_check())
     yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(title="LICITRA Execution Gateway", version="1.0", lifespan=lifespan)
@@ -215,6 +259,7 @@ def register_agent(body: AgentRegisterRequest, db: Session = Depends(get_db)):
     db.commit()
 
     fingerprint = hashlib.sha256(bytes.fromhex(body.public_key)).hexdigest()
+    logger.info(f"agent_registered agent_id={body.agent_id}")
     return {
         "agent_id": body.agent_id,
         "registered": True,
@@ -238,6 +283,7 @@ def create_intent_endpoint(body: IntentCreateRequest, db: Session = Depends(get_
     intent_id = str(uuid4())
 
     if not scan.passed:
+        logger.info(f"injection_blocked agent_id={body.agent_id} patterns={scan.patterns_found}")
         try:
             vr_row = VerificationRecord(
                 record_id=str(uuid4()),
@@ -281,6 +327,7 @@ def create_intent_endpoint(body: IntentCreateRequest, db: Session = Depends(get_
     )
     db.add(row)
     db.commit()
+    logger.info(f"intent_created intent_id={intent_id} agent_id={body.agent_id}")
 
     return {
         "intent_id": intent_id,
@@ -420,6 +467,7 @@ def issue_ticket(body: TicketIssueRequest, db: Session = Depends(get_db)):
     )
     db.add(row)
     db.commit()
+    logger.info(f"ticket_issued ticket_id={ticket['ticket_id']} agent_id={body.agent_id}")
 
     return ticket
 
@@ -540,6 +588,11 @@ def actions_verify(body: VerifyRequest, db: Session = Depends(get_db)):
     )
     db.add(vr_row)
     db.commit()
+
+    if result.allowed:
+        logger.info(f"verify_allowed ticket_id={body.ticket_id} agent_id={body.agent_id} mmr_leaf={mmr_result['leaf_index']}")
+    else:
+        logger.info(f"verify_blocked ticket_id={body.ticket_id} agent_id={body.agent_id} reason={result.reason}")
 
     return {
         "allowed": result.allowed,
@@ -832,6 +885,82 @@ def get_evidence_proof(evidence_id: str, db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------------
+# Metrics helpers (shared by endpoint + background job)
+# ---------------------------------------------------------------------------
+
+def _compute_metrics(db: Session) -> dict:
+    total = db.query(func.count(VerificationRecord.record_id)).scalar() or 0
+    allowed_count = (
+        db.query(func.count(VerificationRecord.record_id))
+        .filter(VerificationRecord.allowed == True)
+        .scalar() or 0
+    )
+    blocked_count = (
+        db.query(func.count(VerificationRecord.record_id))
+        .filter(VerificationRecord.allowed == False)
+        .scalar() or 0
+    )
+    injection_blocks = (
+        db.query(func.count(VerificationRecord.record_id))
+        .filter(VerificationRecord.reason.contains("INJECTION"))
+        .scalar() or 0
+    )
+    schema_blocks = (
+        db.query(func.count(VerificationRecord.record_id))
+        .filter(VerificationRecord.reason.contains("SCHEMA"))
+        .scalar() or 0
+    )
+    rate_limit_blocks = (
+        db.query(func.count(VerificationRecord.record_id))
+        .filter(VerificationRecord.reason.contains("RATE_LIMIT"))
+        .scalar() or 0
+    )
+    replay_blocks = (
+        db.query(func.count(VerificationRecord.record_id))
+        .filter(VerificationRecord.reason.contains("REPLAYED"))
+        .scalar() or 0
+    )
+    return {
+        "total_verifications": total,
+        "allowed_count": allowed_count,
+        "blocked_count": blocked_count,
+        "injection_blocks": injection_blocks,
+        "schema_blocks": schema_blocks,
+        "rate_limit_blocks": rate_limit_blocks,
+        "replay_blocks": replay_blocks,
+        "mmr_leaf_count": mmr_size(),
+        "mmr_root": get_current_root(),
+    }
+
+
+def _take_metrics_snapshot():
+    db = SessionLocal()
+    try:
+        m = _compute_metrics(db)
+        row = MetricsSnapshot(
+            snapshot_id=str(uuid4()),
+            total_verifications=m["total_verifications"],
+            allowed_count=m["allowed_count"],
+            blocked_count=m["blocked_count"],
+            injection_blocks=m["injection_blocks"],
+            schema_blocks=m["schema_blocks"],
+            rate_limit_blocks=m["rate_limit_blocks"],
+            mmr_leaf_count=m["mmr_leaf_count"],
+            mmr_root=m["mmr_root"] or "",
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+        return {
+            "snapshot_id": row.snapshot_id,
+            "snapshot_at": row.snapshot_at.isoformat() if row.snapshot_at else None,
+            **m,
+        }
+    finally:
+        db.close()
+
+
+# ---------------------------------------------------------------------------
 # GET /metrics
 # ---------------------------------------------------------------------------
 
@@ -879,6 +1008,45 @@ def get_metrics(db: Session = Depends(get_db)):
         "mmr_leaf_count": mmr_size(),
         "mmr_root": get_current_root(),
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /metrics/snapshot
+# ---------------------------------------------------------------------------
+
+@app.post("/metrics/snapshot", status_code=201)
+def metrics_snapshot():
+    result = _take_metrics_snapshot()
+    return result
+
+
+# ---------------------------------------------------------------------------
+# GET /metrics/history
+# ---------------------------------------------------------------------------
+
+@app.get("/metrics/history")
+def metrics_history(db: Session = Depends(get_db)):
+    rows = (
+        db.query(MetricsSnapshot)
+        .order_by(MetricsSnapshot.snapshot_at.desc())
+        .limit(10)
+        .all()
+    )
+    return [
+        {
+            "snapshot_id": r.snapshot_id,
+            "snapshot_at": r.snapshot_at.isoformat() if r.snapshot_at else None,
+            "total_verifications": r.total_verifications,
+            "allowed_count": r.allowed_count,
+            "blocked_count": r.blocked_count,
+            "injection_blocks": r.injection_blocks,
+            "schema_blocks": r.schema_blocks,
+            "rate_limit_blocks": r.rate_limit_blocks,
+            "mmr_leaf_count": r.mmr_leaf_count,
+            "mmr_root": r.mmr_root,
+        }
+        for r in rows
+    ]
 
 
 # ---------------------------------------------------------------------------
