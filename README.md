@@ -1,50 +1,95 @@
 # LICITRA Execution Gateway
 
-A cryptographic execution integrity gateway for AI agents that proves every action was authorized, untampered, and executed exactly as approved.
+> Cryptographic execution integrity for AI agents.
+> Every action authorized. Every deviation blocked.
+> Every event tamper-evident.
 
-It solves the gap between *"was this agent allowed to act?"* and *"did the action that actually executed match — byte for byte — what was approved?"*
+[![Tests](https://img.shields.io/badge/tests-91%20passing-brightgreen)]()
+[![OWASP](https://img.shields.io/badge/OWASP-LLM01%20LLM05%20LLM06%20LLM10-blue)]()
+[![License](https://img.shields.io/badge/license-MIT-green)]()
 
-## What It Does
+## The Problem
 
-- **Stops prompt injection before execution** — `scan_for_injection()` runs on every intent at creation and again at every verify call, blocking LLM01 attacks before any ticket is issued or action executed
-- **Enforces output schema contracts** — every agent declares its output schema at registration; `validate_output_schema()` runs at verify check 9, blocking extra fields like `bcc: exfil@shadow.com` (LLM05)
-- **Prevents payload tampering, replay, and scope escalation** — 12 sequential cryptographic checks bind the exact approved payload to the Ed25519-signed ticket; any mismatch, replay, or action substitution is blocked at verify time (LLM06)
-- **Enforces per-agent rate limits and budget caps** — `check_rate_limit()` and `check_budget()` run at every policy evaluation; agents cannot exceed their declared hourly action count or daily spend (LLM10)
+AI agents can take real actions: send emails, query
+databases, modify records. Nothing in current AI
+infrastructure proves that the action executed matches
+what was approved, or detects if an agent was hijacked
+between approval and execution.
+
+## What LICITRA Does
+
+LICITRA is a cryptographic execution layer that sits
+between an AI agent and its tools. Before any action
+executes, LICITRA:
+
+- **Scans the intent** for prompt injection (LLM01)
+- **Issues a signed execution ticket** binding the
+  agent, action, resource, and payload to a single
+  cryptographic commitment
+- **Runs 12 verification checks** at execution time —
+  signature validity, payload hash, action binding,
+  JTI replay prevention, output schema (LLM05),
+  scope enforcement (LLM06), rate limits (LLM10)
+- **Appends every decision** to a Merkle Mountain Range
+  audit chain — tamper-evident, inclusion-provable
+
+If any check fails, the action is **blocked** and
+evidence is written. If the audit chain is modified
+after the fact, the MMR root hash changes and
+integrity violation is detected immediately.
 
 ## Architecture
 
 ```
-Agent
-  │
-  ▼
-POST /intent/create  ──[LLM01: injection scan]──► BLOCKED if injection found
-  │
-  ▼
-POST /policy/evaluate ─[LLM10: rate limit + budget]─► BLOCKED if over limit
-  │
-  ▼
-POST /tickets/issue  ──[Ed25519 signed ticket, payload hash bound]
-  │
-  ▼
-POST /actions/verify ── 12 checks in order:
-  │  Check  1: agent_registered          [LLM06]
-  │  Check  2: ticket_exists             [LLM06]
-  │  Check  3: signature_valid           [LLM06]
-  │  Check  4: not_expired               [LLM06]
-  │  Check  5: jti_not_replayed          [LLM06]
-  │  Check  6: action_matches            [LLM06]
-  │  Check  7: resource_matches          [LLM06]
-  │  Check  8: payload_hash_matches      [LLM06]
-  │  Check  9: output_schema_valid       [LLM05]
-  │  Check 10: injection_rescan          [LLM01]
-  │  Check 11: agent_scope               [LLM06]
-  │  Check 12: decision_binding          [LLM06]
-  │
-  ▼
-MMR Audit Append ── leaf_index bound into leaf_hash (position-swap resistant)
-  │
-  ▼
-GET /evidence/{id} ── tamper-evident record with MMR inclusion proof
+User Intent
+│
+▼
+┌─────────────────────────────────────────┐
+│  INJECTION SCAN (LLM01)                 │
+│  scan_for_injection() — 8 patterns      │
+│  INJ001-INJ008, HIGH/MEDIUM severity    │
+└────────────────┬────────────────────────┘
+                 │ PASS
+                 ▼
+┌─────────────────────────────────────────┐
+│  POLICY EVALUATION (LLM10)              │
+│  check_rate_limit() — per-agent hourly  │
+│  check_budget() — daily spend cap       │
+└────────────────┬────────────────────────┘
+                 │ ALLOWED
+                 ▼
+┌─────────────────────────────────────────┐
+│  TICKET ISSUANCE                        │
+│  Ed25519 signed execution ticket        │
+│  payload_hash, action, resource bound   │
+│  JTI for replay prevention              │
+└────────────────┬────────────────────────┘
+                 │ TICKET
+                 ▼
+┌─────────────────────────────────────────┐
+│  12-CHECK VERIFICATION (LLM06)          │
+│  1. Agent registered                    │
+│  2. Ticket exists in DB                 │
+│  3. Signature valid (Ed25519)           │
+│  4. Ticket not expired                  │
+│  5. JTI not replayed                    │
+│  6. Action matches ticket               │
+│  7. Resource matches ticket             │
+│  8. Payload hash matches ticket         │
+│  9. Output schema valid (LLM05)         │
+│  10. Injection rescan on payload        │
+│  11. Agent scope check                  │
+│  12. Decision binding                   │
+└────────────────┬────────────────────────┘
+                 │ ALLOWED or BLOCKED
+                 ▼
+┌─────────────────────────────────────────┐
+│  MMR AUDIT CHAIN                        │
+│  Every decision → MMR leaf              │
+│  SHA-256 leaf hash with position binding│
+│  Inclusion proof stored per event       │
+│  mmr_detect_tampering() on any read     │
+└─────────────────────────────────────────┘
 ```
 
 ## Quick Start
@@ -53,66 +98,93 @@ GET /evidence/{id} ── tamper-evident record with MMR inclusion proof
 git clone https://github.com/narendrakumarnutalapati/licitra-execution-gateway
 cd licitra-execution-gateway
 cp .env.example .env
-make up
-make seed
+make up        # starts API + React dashboard + PostgreSQL
+make seed      # populates with 46 realistic events
 # Open http://localhost:5173
 ```
 
 ## Run the Attack Demos
 
 ```bash
-make demo-full        # All 10 attacks in sequence
-make demo-tamper      # Tampered payload
-make demo-injection   # Prompt injection
-make demo-schema      # Schema violation
-make demo-ratelimit   # Rate limiting
+make demo-full        # all 10 attacks in sequence
+make demo-tamper      # tampered payload — BLOCKED at Check 8
+make demo-injection   # prompt injection — BLOCKED at intent
+make demo-schema      # schema violation — BLOCKED at Check 9
+make demo-ratelimit   # rate limiting — BLOCKED at policy
 ```
 
-Or open [http://localhost:5173/demo](http://localhost:5173/demo) and click **Run Attack** from the browser.
+Or open **http://localhost:5173/demo** and click
+**Run Attack** from the browser — no terminal needed.
 
-## API Reference
+## Dashboard
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/healthz` | Health check, MMR integrity status |
-| `POST` | `/agents/register` | Register an agent with allowed actions and output schema |
-| `POST` | `/intent/create` | Create intent — runs injection scan |
-| `POST` | `/policy/evaluate` | Evaluate policy — rate limit + budget check |
-| `POST` | `/tickets/issue` | Issue Ed25519-signed execution ticket |
-| `POST` | `/actions/verify` | Run 12-check verification, append to MMR, emit evidence |
-| `POST` | `/actions/execute-demo` | Combined verify + execute for demo agents |
-| `GET` | `/audit` | List verification records |
-| `GET` | `/audit/root` | MMR root hash + integrity status |
-| `POST` | `/audit/verify-proof` | Manually verify an MMR inclusion proof |
-| `GET` | `/evidence/{id}` | Full evidence record with MMR proof |
-| `GET` | `/evidence/{id}/pdf` | Downloadable PDF evidence report |
-| `GET` | `/evidence/{id}/proof` | Raw MMR proof fields only |
-| `GET` | `/metrics` | Aggregate counters: allowed, blocked, by risk category |
+| Page | What it shows |
+|---|---|
+| Overview | Live metrics: allowed, blocked, injections, schema violations, rate limits |
+| Actions | Last 50 audit events with OWASP badges, clickable evidence links |
+| MMR | Current root hash, leaf count, INTACT/TAMPERED status |
+| OWASP | Coverage cards with live counts for LLM01/05/06/10 |
+| Verify | Manual MMR inclusion proof verifier with auto-fill |
+| Demo | 10 attack cards — run from browser with live results |
 
-## OWASP Coverage
+## API
 
-| Risk | Coverage | How |
-|------|----------|-----|
-| LLM01 | Full | `scan_for_injection()` at intent creation + re-scan at verify check 10 |
-| LLM05 | Full | Output schema declared at registration; `validate_output_schema()` at verify check 9 |
-| LLM06 | Full | 12-check cryptographic verification cycle — payload hash, signature, JTI, scope |
-| LLM10 | Full | Per-agent hourly action limits + daily budget caps enforced at policy evaluation |
-| LLM02–04, 07–09 | Out of scope | See [docs/OWASP_COVERAGE.md](docs/OWASP_COVERAGE.md) |
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | /healthz | System health + MMR status |
+| POST | /agents/register | Register agent with policy rules |
+| POST | /intent/create | Create intent with injection scan |
+| POST | /policy/evaluate | Evaluate against agent policy |
+| POST | /tickets/issue | Issue Ed25519 signed ticket |
+| POST | /actions/verify | 12-check verification |
+| GET | /audit | Recent audit events |
+| GET | /audit/root | MMR root hash + integrity |
+| POST | /audit/verify-proof | Verify MMR inclusion proof |
+| GET | /evidence/{id} | Full evidence record |
+| GET | /evidence/{id}/pdf | PDF evidence download |
+| GET | /metrics | Live counters by attack type |
+| POST | /metrics/snapshot | Persist metrics snapshot |
+| GET | /metrics/history | Last 10 metric snapshots |
+
+## OWASP LLM Top 10 Coverage
+
+| Risk | Status | Implementation |
+|---|---|---|
+| LLM01 Prompt Injection | ✅ Full | 8 patterns, HIGH blocks immediately, scan at intent + rescan at verify |
+| LLM05 Improper Output Handling | ✅ Full | JSON Schema validation at Check 9, additionalProperties enforced |
+| LLM06 Excessive Agency | ✅ Full | 12-check cryptographic verification, Ed25519 tickets, MMR audit |
+| LLM10 Unbounded Consumption | ✅ Full | Per-agent hourly limits, daily limits, budget caps |
+| LLM02-04, LLM07-09 | ⬜ Out of scope | See docs/OWASP_COVERAGE.md |
+
+## Test Suite
+
+```bash
+make test              # 54 unit tests
+make test-integration  # 37 integration tests
+make test-all          # 91 total
+```
+
+All tests run inside Docker — no local Python setup needed.
 
 ## Research Foundation
 
 This gateway implements the LICITRA framework:
 
-- **LICITRA-SENTRY** — pre-execution enforcement layer: [https://doi.org/10.5281/zenodo.18860290](https://doi.org/10.5281/zenodo.18860290)
-- **LICITRA-MMR-CORE** — tamper-evident MMR audit chain: [https://doi.org/10.5281/zenodo.18843032](https://doi.org/10.5281/zenodo.18843032)
+- **LICITRA-SENTRY** — Execution tickets and witnessed
+  transparency for runtime enforcement
+  DOI: https://doi.org/10.5281/zenodo.18860290
 
-## Test Suite
+- **LICITRA-MMR-CORE** — Merkle Mountain Range audit
+  ledger for tamper-evident accountability
+  DOI: https://doi.org/10.5281/zenodo.18843032
 
-81+ unit tests covering all 7 packages.
+OWASP GenAI Data Security Risks v1.0 — credited reviewer
 
-```bash
-make test
-```
+## Stack
+
+Python 3.12 · FastAPI · PostgreSQL · SQLAlchemy ·
+Ed25519/PyNaCl · SHA-256 · Merkle Mountain Range ·
+jsonschema · ReportLab · React/Vite · Docker Compose
 
 ## License
 

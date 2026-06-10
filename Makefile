@@ -1,9 +1,24 @@
-.PHONY: setup up down test test-integration test-all seed snapshot history \
+.PHONY: setup up down test test-integration test-all seed snapshot history help logs reset \
         demo-authorized demo-tamper demo-replay \
         demo-overscope demo-expired demo-fake \
         demo-injection demo-schema demo-ratelimit \
         demo-mmr-tamper demo-calendar demo-gmail \
         demo-mcp demo-full
+
+help:
+	@echo "LICITRA Execution Gateway — available targets:"
+	@echo ""
+	@echo "  make up          — start all containers"
+	@echo "  make down        — stop all containers"
+	@echo "  make seed        — populate with demo data"
+	@echo "  make test        — run 54 unit tests"
+	@echo "  make test-int    — run 37 integration tests"
+	@echo "  make test-all    — run all 91 tests"
+	@echo "  make demo-full   — run all 10 attack demos"
+	@echo "  make logs        — tail API logs"
+	@echo "  make snapshot    — save metrics snapshot"
+	@echo "  make reset       — full reset (down -v + up + seed)"
+	@echo ""
 
 setup:
 	cp -n .env.example .env || true
@@ -70,6 +85,14 @@ demo-gmail:
 
 demo-mcp:
 	docker compose exec api python examples/mcp-tool/run_mcp_demo.py
+
+logs:
+	docker compose logs api -f
+
+reset:
+	docker compose down -v
+	docker compose up --build -d
+	docker compose exec api python scripts/seed.py
 
 demo-full:
 	@echo "============================================================"

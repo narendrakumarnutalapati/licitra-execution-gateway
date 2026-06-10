@@ -1,5 +1,7 @@
 # AGENTS.md
 
+**Status: COMPLETE — Days 0-13 implemented**
+
 **Project:** LICITRA Execution Gateway  
 **Mission:** Cryptographic execution integrity for AI agents.  
 **OWASP Coverage:** LLM01 · LLM05 · LLM06 · LLM10
@@ -47,3 +49,7 @@
 ## Stack
 
 `FastAPI` · `PostgreSQL` · `React + Vite` · `Ed25519 / PyNaCl` · `SHA-256` · `MMR` · `jsonschema` · `ReportLab` · `pytest` · `Docker`
+
+## Test Counts
+
+Test counts: 54 unit + 37 integration = 91 total
