@@ -238,6 +238,26 @@ def create_intent_endpoint(body: IntentCreateRequest, db: Session = Depends(get_
     intent_id = str(uuid4())
 
     if not scan.passed:
+        try:
+            vr_row = VerificationRecord(
+                record_id=str(uuid4()),
+                ticket_id=None,
+                agent_id=None,
+                action_submitted=body.action,
+                resource_submitted=body.resource,
+                payload_hash_submitted="",
+                allowed=False,
+                reason="INJECTION_DETECTED",
+                checks_passed={},
+                diff=None,
+                schema_violations=None,
+                injection_recheck="FAIL",
+                evidence_id=None,
+            )
+            db.add(vr_row)
+            db.commit()
+        except Exception:
+            db.rollback()
         return {
             "error": "INJECTION_DETECTED",
             "patterns_found": scan.patterns_found,
@@ -304,6 +324,28 @@ def policy_evaluate(body: PolicyEvaluateRequest, db: Session = Depends(get_db)):
     )
     db.add(row)
     db.commit()
+
+    if not decision.allowed and decision.reason and "RATE_LIMIT" in decision.reason:
+        try:
+            vr_row = VerificationRecord(
+                record_id=str(uuid4()),
+                ticket_id=None,
+                agent_id=None,
+                action_submitted=intent_row.action,
+                resource_submitted=intent_row.resource,
+                payload_hash_submitted="",
+                allowed=False,
+                reason=decision.reason,
+                checks_passed={},
+                diff=None,
+                schema_violations=None,
+                injection_recheck="PASS",
+                evidence_id=None,
+            )
+            db.add(vr_row)
+            db.commit()
+        except Exception:
+            db.rollback()
 
     return {
         "decision_id": decision.decision_id,
@@ -891,6 +933,21 @@ def _demo_full_flow(agent_id, action, resource, purpose, payload, expires_at,
     decision = evaluate_policy(agent_dict, intent_dict)
 
     if not decision.allowed:
+        if decision.reason and "RATE_LIMIT" in decision.reason:
+            try:
+                vr_row = VerificationRecord(
+                    record_id=str(uuid4()),
+                    ticket_id=None, agent_id=None,
+                    action_submitted=action, resource_submitted=resource,
+                    payload_hash_submitted="", allowed=False,
+                    reason=decision.reason, checks_passed={},
+                    diff=None, schema_violations=None,
+                    injection_recheck="PASS", evidence_id=None,
+                )
+                db.add(vr_row)
+                db.commit()
+            except Exception:
+                db.rollback()
         return None, None, {"decision": decision.__dict__ if hasattr(decision, "__dict__") else decision}
 
     dec_row = PolicyDecisionModel(
