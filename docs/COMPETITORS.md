@@ -4,12 +4,36 @@
 "Okta/Silverfort/Multifactor identify the actor. Microsoft AGT/Cerbos/TealTiger enforce runtime policy. Clawvisor/Aembit vault credentials. OPAQUE attests the environment. LICITRA proves the exact action was authorized, untampered, replay-resistant, and executed as approved — and produces an MMR inclusion proof any third party can verify independently."
 
 ## Competitor Map
+Last updated: June 2026. Four new entrants added
+(Certiv, Crittora, updated Microsoft AGT, updated
+CodeIntegrity) reflecting the rapid evolution of
+the agentic AI security market in Q1-Q2 2026.
 
 ### Microsoft Agent Governance Toolkit (AGT)
-Released: April 2026 | Open Source | MIT License | Production
-Publicly emphasises: Policy enforcement, Ed25519 agent identity, sub-0.1ms latency, all 10 OWASP Agentic AI risks
-Does not publicly address: Action-payload binding at execution, MMR inclusion proofs
-LICITRA relationship: LICITRA runs after AGT. AGT gates access. LICITRA proves the exact payload was untampered and logs it with MMR proof.
+Released: April 2, 2026 | Open Source | MIT License | Production
+GitHub: github.com/microsoft/agent-governance-toolkit
+Publicly emphasises: Policy enforcement at sub-0.1ms,
+Ed25519 cryptographic agent identity (SPIFFE/DID/mTLS),
+execution sandboxing (4-tier privilege rings), all 10
+OWASP Agentic AI risks, 12+ framework integrations
+(LangChain, CrewAI, AutoGen, Google ADK, OpenAI Agents),
+Python/TypeScript/Rust/Go/.NET SDKs, 992 conformance
+tests, tamper-evident audit log
+Does not publicly address: Cryptographic binding of
+approved payload hash to executing action,
+JTI-based replay prevention at verification layer,
+MMR inclusion proofs verifiable by third parties
+without trusting the operator, field-level diff
+between approved and executed payload
+LICITRA relationship: Microsoft AGT is the most
+capable competitor in production. AGT gates access,
+enforces policy, and establishes cryptographic
+agent identity. LICITRA runs after AGT.
+AGT answers: is this agent allowed to do this?
+LICITRA answers: did the action that executed match
+byte-for-byte what was approved, and can a regulator
+prove it independently?
+A serious compliance deployment needs both layers.
 
 ### OPAQUE (UC Berkeley RISELab)
 Stage: Series A $24M | Enterprise customers: ServiceNow, Anthropic, Accenture | Production
@@ -41,10 +65,60 @@ Does not publicly address: Action-payload binding at execution level
 LICITRA relationship: TealTiger governs at workflow level. LICITRA proves at action level.
 
 ### CodeIntegrity
-Publicly emphasises: Tool-call approvals, execution evidence
-Most similar surface area to LICITRA
-Does not publicly address: Cryptographic payload binding between approval and execution
-LICITRA relationship: CodeIntegrity focuses on approvals and evidence collection. LICITRA adds cryptographic binding proving executed payload = approved payload.
+Stage: $5M seed raised May 27 2026 |
+Enterprise pilots — broader rollout planned
+Publicly emphasises: Full visibility into runtime
+tool actions, Zero Trust Control Plane for agent
+execution, data provenance tracking, intent evaluation
+before tool calls, MCP security, data flow controls,
+compliance evidence generation
+Does not publicly address: Ed25519 signed execution
+tickets binding payload hash to approved action,
+JTI replay prevention, MMR tamper-evident audit chain,
+O(log N) inclusion proofs verifiable by third party
+Most similar surface area to LICITRA of all competitors.
+LICITRA relationship: CodeIntegrity approaches the
+problem from a data-loss-prevention and visibility
+angle. LICITRA approaches it from a cryptographic
+integrity angle. CodeIntegrity tracks what data flows
+where. LICITRA proves the exact payload that executed
+matched the exact payload that was approved, with
+a tamper-evident proof chain a regulator can verify
+independently.
+
+### Certiv
+Stage: Pre-seed $4.2M raised March 2026 |
+Pilots only — not publicly available
+Publicly emphasises: Runtime assurance for AI agents,
+endpoint-native interception on Windows/Mac/Linux,
+shadow agent discovery, pre-execution policy enforcement,
+OWASP Agentic 2026 coverage, intent-based policies
+Does not publicly address: Cryptographic payload hash
+binding between approval and execution, JTI replay
+prevention, MMR tamper-evident audit chain,
+third-party verifiable inclusion proofs
+LICITRA relationship: Certiv sits on the endpoint
+machine where the agent runs. LICITRA sits between
+the agent and the tool API. Different architectural
+layers. Certiv governs agent behaviour at the OS
+level. LICITRA proves the exact payload that reached
+the tool matched what was cryptographically approved.
+
+### Crittora / OpenClaw
+Stage: Early — request-access only, announced
+February 2026
+Publicly emphasises: Cryptographically enforced
+policy framework for the OpenClaw agent runtime,
+prevention of privilege escalation, configuration
+drift protection, audit-ready policy integrity
+Does not publicly address: Per-action payload hash
+binding (listed as future feature), JTI replay
+prevention, MMR inclusion proofs, framework-agnostic
+deployment
+LICITRA relationship: Crittora is runtime-specific
+to OpenClaw. LICITRA is framework-agnostic.
+Crittora's per-action execution authorization is
+a roadmap item. LICITRA implements it today.
 
 ## LICITRA Defensible Moat
 Based on publicly available documentation as of June 2026, no competitor publicly describes all four in combination:
