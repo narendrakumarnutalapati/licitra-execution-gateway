@@ -46,7 +46,7 @@ try:
     from apps.api.database import Base, engine, get_db, SessionLocal
     from apps.api.models import (
         Agent, Evidence, ExecutionTicket, Intent, MetricsSnapshot,
-        PolicyDecision as PolicyDecisionModel, VerificationRecord,
+        MmrLeaf, PolicyDecision as PolicyDecisionModel, VerificationRecord,
     )
     from apps.api.schemas import (
         AgentRegisterRequest, IntentCreateRequest, PolicyEvaluateRequest,
@@ -56,7 +56,7 @@ except ImportError:
     from database import Base, engine, get_db, SessionLocal  # type: ignore
     from models import (  # type: ignore
         Agent, Evidence, ExecutionTicket, Intent, MetricsSnapshot,
-        PolicyDecision as PolicyDecisionModel, VerificationRecord,
+        MmrLeaf, PolicyDecision as PolicyDecisionModel, VerificationRecord,
     )
     from schemas import (  # type: ignore
         AgentRegisterRequest, IntentCreateRequest, PolicyEvaluateRequest,
@@ -74,7 +74,7 @@ from packages.audit_chain.audit_chain import (
     get_inclusion_proof, get_current_root,
 )
 from packages.evidence.evidence import generate_evidence_json, generate_evidence_pdf
-from packages.mmr.mmr import mmr_size, mmr_verify_proof, mmr_leaves
+from packages.mmr.mmr import mmr_size, mmr_verify_proof
 
 
 # ---------------------------------------------------------------------------
@@ -145,8 +145,9 @@ def _parse_dt(value: str) -> datetime:
 async def background_health_check():
     while True:
         await asyncio.sleep(60)
+        session = SessionLocal()
         try:
-            integrity_result = verify_audit_integrity()
+            integrity_result = verify_audit_integrity(db=session)
             if not integrity_result["intact"]:
                 logger.warning("MMR_INTEGRITY_VIOLATION detected")
             else:
@@ -154,6 +155,8 @@ async def background_health_check():
             _take_metrics_snapshot()
         except Exception as e:
             logger.error(f"background_health_check error: {e}")
+        finally:
+            session.close()
 
 
 @asynccontextmanager
@@ -212,14 +215,14 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 @app.get("/healthz")
-def healthz():
-    integrity_result = verify_audit_integrity()
+def healthz(db: Session = Depends(get_db)):
+    integrity_result = verify_audit_integrity(db=db)
     integrity = "INTACT" if integrity_result["intact"] else "TAMPERED"
     return {
         "status": "ok",
         "version": "1.0",
-        "mmr_root": get_current_root(),
-        "mmr_leaves": mmr_size(),
+        "mmr_root": get_current_root(db=db),
+        "mmr_leaves": mmr_size(db=db),
         "integrity": integrity,
     }
 
@@ -528,7 +531,7 @@ def actions_verify(body: VerifyRequest, db: Session = Depends(get_db)):
         "payload_hash": payload_hash,
         "ticket_id": body.ticket_id,
     }
-    mmr_result = append_audit_event(vr_for_audit)
+    mmr_result = append_audit_event(vr_for_audit, db=db)
 
     vr_for_evidence = {
         "intent_id": ticket_row.decision_id,
@@ -648,7 +651,7 @@ def execute_demo(body: VerifyRequest, db: Session = Depends(get_db)):
         "payload_hash": payload_hash,
         "ticket_id": body.ticket_id,
     }
-    mmr_result = append_audit_event(vr_for_audit)
+    mmr_result = append_audit_event(vr_for_audit, db=db)
 
     vr_for_evidence = {
         "intent_id": ticket_row.decision_id,
@@ -756,8 +759,8 @@ def get_audit(limit: int = 50, offset: int = 0, db: Session = Depends(get_db)):
         })
     return {
         "events": events,
-        "mmr_root": get_current_root(),
-        "total_leaves": mmr_size(),
+        "mmr_root": get_current_root(db=db),
+        "total_leaves": mmr_size(db=db),
     }
 
 
@@ -766,11 +769,11 @@ def get_audit(limit: int = 50, offset: int = 0, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @app.get("/audit/root")
-def audit_root():
-    integrity_result = verify_audit_integrity()
+def audit_root(db: Session = Depends(get_db)):
+    integrity_result = verify_audit_integrity(db=db)
     return {
-        "mmr_root": get_current_root(),
-        "leaf_count": mmr_size(),
+        "mmr_root": get_current_root(db=db),
+        "leaf_count": mmr_size(db=db),
         "integrity": "INTACT" if integrity_result["intact"] else "TAMPERED",
         "last_check": datetime.now(timezone.utc).isoformat(),
     }
@@ -928,8 +931,8 @@ def _compute_metrics(db: Session) -> dict:
         "schema_blocks": schema_blocks,
         "rate_limit_blocks": rate_limit_blocks,
         "replay_blocks": replay_blocks,
-        "mmr_leaf_count": mmr_size(),
-        "mmr_root": get_current_root(),
+        "mmr_leaf_count": mmr_size(db=db),
+        "mmr_root": get_current_root(db=db),
     }
 
 
@@ -1005,8 +1008,8 @@ def get_metrics(db: Session = Depends(get_db)):
         "schema_blocks": schema_blocks,
         "rate_limit_blocks": rate_limit_blocks,
         "replay_blocks": replay_blocks,
-        "mmr_leaf_count": mmr_size(),
-        "mmr_root": get_current_root(),
+        "mmr_leaf_count": mmr_size(db=db),
+        "mmr_root": get_current_root(db=db),
     }
 
 
@@ -1173,7 +1176,7 @@ def _run_verify(ticket_id, agent_id, action, resource, payload, db):
         "decision": "ALLOWED" if result.allowed else "BLOCKED",
         "reason": result.reason,
         "payload_hash": payload_hash,
-    })
+    }, db=db)
     vr_for_evidence = {
         "intent_id": ticket_dict.get("decision_id"),
         "decision_id": ticket_dict.get("decision_id"),
@@ -1416,11 +1419,12 @@ def demo_mmr_tamper(db: Session = Depends(get_db)):
                                          verify_action, db)
         if not err and ticket:
             _run_verify(ticket["ticket_id"], aid, "send_email", "cfo@company.com", payload, db)
-    if mmr_leaves:
-        tamper_idx = min(0, len(mmr_leaves) - 1)
-        mmr_leaves[tamper_idx]["event_data"] = {"tampered": True, "agent_id": "CORRUPTED"}
+    leaf_row = db.query(MmrLeaf).filter(MmrLeaf.leaf_index == 0).first()
+    if leaf_row:
+        leaf_row.event_data = {"tampered": True, "agent_id": "CORRUPTED"}
+        db.commit()
     from packages.audit_chain.audit_chain import verify_audit_integrity
-    integrity = verify_audit_integrity()
+    integrity = verify_audit_integrity(db=db)
     ms = int((_time.time() - t0) * 1000)
     return {
         "attack_name": "MMR Audit Chain Tamper",
@@ -1462,13 +1466,15 @@ if os.getenv("DEBUG", "").lower() == "true":
         new_data: Dict
 
     @app.post("/debug/tamper-mmr")
-    def debug_tamper_mmr(body: _TamperRequest):
-        if body.leaf_index < 0 or body.leaf_index >= len(mmr_leaves):
+    def debug_tamper_mmr(body: _TamperRequest, db: Session = Depends(get_db)):
+        leaf_row = db.query(MmrLeaf).filter(MmrLeaf.leaf_index == body.leaf_index).first()
+        if not leaf_row:
             raise HTTPException(
                 status_code=400,
-                detail=f"leaf_index {body.leaf_index} out of range (size={len(mmr_leaves)})",
+                detail=f"leaf_index {body.leaf_index} out of range",
             )
-        mmr_leaves[body.leaf_index]["event_data"] = body.new_data
+        leaf_row.event_data = body.new_data
+        db.commit()
         return {
             "tampered": True,
             "leaf_index": body.leaf_index,

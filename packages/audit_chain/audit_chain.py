@@ -5,10 +5,11 @@ from packages.mmr.mmr import (
     mmr_detect_tampering,
     mmr_proof,
     mmr_root,
+    _compute_proof_from_db,
 )
 
 
-def append_audit_event(verification_record: dict) -> dict:
+def append_audit_event(verification_record: dict, db=None) -> dict:
     allowed = verification_record.get("allowed", False)
 
     event_data = {
@@ -23,18 +24,31 @@ def append_audit_event(verification_record: dict) -> dict:
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
-    return mmr_append(event_data)
+    return mmr_append(event_data, db=db)
 
 
-def verify_audit_integrity() -> dict:
-    return mmr_detect_tampering()
+def verify_audit_integrity(db=None) -> dict:
+    return mmr_detect_tampering(db=db)
 
 
-def get_inclusion_proof(leaf_index: int) -> dict:
-    proof = mmr_proof(leaf_index)
-    from packages.mmr.mmr import mmr_leaves
-    leaf_hash = mmr_leaves[leaf_index]["leaf_hash"]
-    root = mmr_root()
+def get_inclusion_proof(leaf_index: int, db=None) -> dict:
+    if db is not None:
+        try:
+            from apps.api.models import MmrLeaf
+        except ImportError:
+            from models import MmrLeaf  # type: ignore
+        leaf_row = db.query(MmrLeaf).filter(MmrLeaf.leaf_index == leaf_index).first()
+        if not leaf_row:
+            raise IndexError(f"leaf_index {leaf_index} out of range")
+        leaf_hash = leaf_row.leaf_hash
+        proof = _compute_proof_from_db(leaf_index, db)
+        root = mmr_root(db=db)
+    else:
+        proof = mmr_proof(leaf_index)
+        from packages.mmr.mmr import mmr_leaves
+        leaf_hash = mmr_leaves[leaf_index]["leaf_hash"]
+        root = mmr_root()
+
     return {
         "leaf_hash": leaf_hash,
         "proof": proof,
@@ -43,5 +57,5 @@ def get_inclusion_proof(leaf_index: int) -> dict:
     }
 
 
-def get_current_root() -> str:
-    return mmr_root()
+def get_current_root(db=None) -> str:
+    return mmr_root(db=db)

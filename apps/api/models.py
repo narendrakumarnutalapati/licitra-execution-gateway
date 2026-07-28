@@ -144,3 +144,25 @@ class Evidence(Base):
     mmr_proof = Column(JSON, nullable=False)
     mmr_proof_size = Column(Integer, nullable=False)
     created_at = Column(DateTime(timezone=True), default=_now)
+
+
+class MmrLeaf(Base):
+    __tablename__ = "mmr_leaves"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    leaf_index = Column(Integer, unique=True, nullable=False, index=True)
+    leaf_hash = Column(String(64), nullable=False)
+    event_data = Column(JSON, nullable=False)
+    proof = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=_now)
+
+
+class MmrPeak(Base):
+    __tablename__ = "mmr_peaks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    peak_index = Column(Integer, unique=True, nullable=False)
+    peak_hash = Column(String(64), nullable=False)
+    height = Column(Integer, nullable=False)
+    position = Column(Integer, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=_now)

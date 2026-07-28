@@ -30,10 +30,22 @@ def sha256_hex(data: str) -> str:
 # MMR root
 # ---------------------------------------------------------------------------
 
-def mmr_root() -> str:
-    if not mmr_peaks:
+def mmr_root(db=None) -> str:
+    if db is None:
+        # In-memory path — COMPLETELY UNCHANGED
+        if not mmr_peaks:
+            return "0" * 64
+        combined = "".join(p["hash"] for p in mmr_peaks)
+        return sha256_hex(combined)
+
+    try:
+        from apps.api.models import MmrPeak
+    except ImportError:
+        from models import MmrPeak  # type: ignore
+    db_peaks = db.query(MmrPeak).order_by(MmrPeak.peak_index).all()
+    if not db_peaks:
         return "0" * 64
-    combined = "".join(p["hash"] for p in mmr_peaks)
+    combined = "".join(p.peak_hash for p in db_peaks)
     return sha256_hex(combined)
 
 
@@ -125,35 +137,101 @@ def _compute_proof(leaf_index: int) -> dict:
 # Append
 # ---------------------------------------------------------------------------
 
-def mmr_append(event_data: dict) -> dict:
-    leaf_index = len(mmr_leaves)
+def mmr_append(event_data: dict, db=None) -> dict:
+    if db is None:
+        # In-memory path — COMPLETELY UNCHANGED
+        leaf_index = len(mmr_leaves)
+        leaf_hash = sha256_hex(str(leaf_index) + canonical_json(event_data))
+
+        mmr_leaves.append({
+            "leaf_index": leaf_index,
+            "leaf_hash": leaf_hash,
+            "event_data": event_data,
+            "proof": [],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+
+        # Peak merging
+        new_peak = {"height": 0, "position": leaf_index, "hash": leaf_hash}
+        while mmr_peaks and mmr_peaks[-1]["height"] == new_peak["height"]:
+            popped = mmr_peaks.pop()
+            merged_hash = sha256_hex(popped["hash"] + new_peak["hash"])
+            new_peak = {
+                "height": popped["height"] + 1,
+                "position": len(mmr_leaves) - 1,
+                "hash": merged_hash,
+            }
+        mmr_peaks.append(new_peak)
+
+        root_hash = mmr_root()
+
+        # Compute and store inclusion proof at INSERT time
+        proof = _compute_proof(leaf_index)
+        mmr_leaves[leaf_index]["proof"] = proof
+
+        return {
+            "leaf_index": leaf_index,
+            "leaf_hash": leaf_hash,
+            "root_hash": root_hash,
+            "proof": proof,
+        }
+
+    # DB path
+    try:
+        from apps.api.models import MmrLeaf, MmrPeak
+    except ImportError:
+        from models import MmrLeaf, MmrPeak  # type: ignore
+
+    leaf_index = db.query(MmrLeaf).count()
     leaf_hash = sha256_hex(str(leaf_index) + canonical_json(event_data))
 
-    mmr_leaves.append({
-        "leaf_index": leaf_index,
-        "leaf_hash": leaf_hash,
-        "event_data": event_data,
-        "proof": [],
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    })
+    # Load current peaks from DB into local list for peak merging algorithm
+    db_peaks = db.query(MmrPeak).order_by(MmrPeak.peak_index).all()
+    peaks_list = [
+        {"height": p.height, "position": p.position, "hash": p.peak_hash}
+        for p in db_peaks
+    ]
 
-    # Peak merging
+    # Run same peak merging algorithm as in-memory
     new_peak = {"height": 0, "position": leaf_index, "hash": leaf_hash}
-    while mmr_peaks and mmr_peaks[-1]["height"] == new_peak["height"]:
-        popped = mmr_peaks.pop()
+    while peaks_list and peaks_list[-1]["height"] == new_peak["height"]:
+        popped = peaks_list.pop()
         merged_hash = sha256_hex(popped["hash"] + new_peak["hash"])
         new_peak = {
             "height": popped["height"] + 1,
-            "position": len(mmr_leaves) - 1,
+            "position": leaf_index,
             "hash": merged_hash,
         }
-    mmr_peaks.append(new_peak)
+    peaks_list.append(new_peak)
 
-    root_hash = mmr_root()
+    # Write leaf to DB
+    leaf_row = MmrLeaf(
+        leaf_index=leaf_index,
+        leaf_hash=leaf_hash,
+        event_data=event_data,
+        proof=[],
+    )
+    db.add(leaf_row)
 
-    # Compute and store inclusion proof at INSERT time
-    proof = _compute_proof(leaf_index)
-    mmr_leaves[leaf_index]["proof"] = proof
+    # Replace all peaks in DB
+    db.query(MmrPeak).delete()
+    for i, peak in enumerate(peaks_list):
+        db.add(MmrPeak(
+            peak_index=i,
+            peak_hash=peak["hash"],
+            height=peak["height"],
+            position=peak["position"],
+        ))
+    db.commit()
+
+    # Compute root and proof using DB state
+    root_hash = mmr_root(db=db)
+    proof = _compute_proof_from_db(leaf_index, db)
+
+    # Update leaf with proof
+    leaf_row = db.query(MmrLeaf).filter(MmrLeaf.leaf_index == leaf_index).first()
+    leaf_row.proof = proof
+    db.commit()
 
     return {
         "leaf_index": leaf_index,
@@ -201,13 +279,28 @@ def mmr_verify_proof(
 # Tamper detection
 # ---------------------------------------------------------------------------
 
-def mmr_detect_tampering() -> dict:
-    for leaf in mmr_leaves:
+def mmr_detect_tampering(db=None) -> dict:
+    if db is None:
+        # In-memory path — COMPLETELY UNCHANGED
+        for leaf in mmr_leaves:
+            expected = sha256_hex(
+                str(leaf["leaf_index"]) + canonical_json(leaf["event_data"])
+            )
+            if expected != leaf["leaf_hash"]:
+                return {"intact": False, "tampered_leaf_index": leaf["leaf_index"]}
+        return {"intact": True, "tampered_leaf_index": None}
+
+    try:
+        from apps.api.models import MmrLeaf
+    except ImportError:
+        from models import MmrLeaf  # type: ignore
+    leaves = db.query(MmrLeaf).order_by(MmrLeaf.leaf_index).all()
+    for leaf in leaves:
         expected = sha256_hex(
-            str(leaf["leaf_index"]) + canonical_json(leaf["event_data"])
+            str(leaf.leaf_index) + canonical_json(leaf.event_data)
         )
-        if expected != leaf["leaf_hash"]:
-            return {"intact": False, "tampered_leaf_index": leaf["leaf_index"]}
+        if expected != leaf.leaf_hash:
+            return {"intact": False, "tampered_leaf_index": leaf.leaf_index}
     return {"intact": True, "tampered_leaf_index": None}
 
 
@@ -215,5 +308,58 @@ def mmr_detect_tampering() -> dict:
 # Size
 # ---------------------------------------------------------------------------
 
-def mmr_size() -> int:
-    return len(mmr_leaves)
+def mmr_size(db=None) -> int:
+    if db is None:
+        return len(mmr_leaves)
+    try:
+        from apps.api.models import MmrLeaf
+    except ImportError:
+        from models import MmrLeaf  # type: ignore
+    return db.query(MmrLeaf).count()
+
+
+def _compute_proof_from_db(leaf_index: int, db) -> dict:
+    # NOTE: global state swap. Not thread-safe under concurrent workers.
+    # Refactor in v1.1.
+    try:
+        from apps.api.models import MmrLeaf, MmrPeak
+    except ImportError:
+        from models import MmrLeaf, MmrPeak  # type: ignore
+
+    all_leaves = db.query(MmrLeaf).order_by(MmrLeaf.leaf_index).all()
+    db_peaks = db.query(MmrPeak).order_by(MmrPeak.peak_index).all()
+
+    global mmr_leaves, mmr_peaks
+
+    saved_leaves = mmr_leaves[:]
+    saved_peaks = mmr_peaks[:]
+
+    try:
+        mmr_leaves.clear()
+        mmr_peaks.clear()
+
+        for leaf in all_leaves:
+            mmr_leaves.append({
+                "leaf_index": leaf.leaf_index,
+                "leaf_hash": leaf.leaf_hash,
+                "event_data": leaf.event_data,
+                "proof": leaf.proof or [],
+                "created_at": leaf.created_at.isoformat()
+                if leaf.created_at else "",
+            })
+
+        for peak in db_peaks:
+            mmr_peaks.append({
+                "height": peak.height,
+                "position": peak.position,
+                "hash": peak.peak_hash,
+            })
+
+        result = _compute_proof(leaf_index)
+    finally:
+        mmr_leaves.clear()
+        mmr_leaves.extend(saved_leaves)
+        mmr_peaks.clear()
+        mmr_peaks.extend(saved_peaks)
+
+    return result
