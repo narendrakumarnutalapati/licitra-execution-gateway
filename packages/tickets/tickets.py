@@ -57,7 +57,6 @@ def issue_execution_ticket(
         "payload_hash": payload_hash,
         "purpose": purpose,
         "resource": resource,
-        "status": "ACTIVE",
         "ticket_id": ticket_id,
     }
 
@@ -69,12 +68,12 @@ def issue_execution_ticket(
     signed = signing_key.sign(canonical_json)
     signature_hex = signed.signature.hex()
 
-    return {**canonical_ticket, "issuer_signature": signature_hex}
+    return {**canonical_ticket, "status": "ACTIVE", "issuer_signature": signature_hex}
 
 
 def verify_ticket_signature(ticket_dict: dict, public_key_hex: str) -> bool:
     try:
-        canonical_ticket = {k: v for k, v in ticket_dict.items() if k != "issuer_signature"}
+        canonical_ticket = {k: v for k, v in ticket_dict.items() if k not in ("issuer_signature", "status")}
         canonical_json = json.dumps(canonical_ticket, sort_keys=True, separators=(",", ":")).encode()
 
         signature_bytes = bytes.fromhex(ticket_dict["issuer_signature"])

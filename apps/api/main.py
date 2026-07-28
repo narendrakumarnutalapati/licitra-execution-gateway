@@ -183,7 +183,17 @@ async def lifespan(app: FastAPI):
         pub = kp["public_key_hex"]
     app.state.private_key = priv
     app.state.public_key = pub
-    app.state.used_jtis: set = set()
+    # Load consumed JTIs from DB into memory
+    # so replay protection survives restart
+    with SessionLocal() as session:
+        consumed = session.query(
+            ExecutionTicket.jti
+        ).filter(
+            ExecutionTicket.status == "CONSUMED"
+        ).all()
+        app.state.used_jtis = set(
+            row.jti for row in consumed
+        )
     app.state.integrity_status = "INTACT"
 
     # Populate module-level ref so endpoint helpers can access state
@@ -519,6 +529,7 @@ def actions_verify(body: VerifyRequest, db: Session = Depends(get_db)):
         payload_dict=body.payload,
         used_jtis=used_jtis,
         system_public_key=system_pub,
+        db=db,
     )
 
     payload_hash = calculate_payload_hash(body.payload)
@@ -639,6 +650,7 @@ def execute_demo(body: VerifyRequest, db: Session = Depends(get_db)):
         payload_dict=body.payload,
         used_jtis=used_jtis,
         system_public_key=system_pub,
+        db=db,
     )
 
     payload_hash = calculate_payload_hash(body.payload)
@@ -1168,6 +1180,7 @@ def _run_verify(ticket_id, agent_id, action, resource, payload, db):
         action=action, resource=resource,
         payload_dict=payload, used_jtis=used_jtis,
         system_public_key=system_pub,
+        db=db,
     )
     payload_hash = calculate_payload_hash(payload)
     mmr_result = append_audit_event({

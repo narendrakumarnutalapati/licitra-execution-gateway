@@ -79,6 +79,7 @@ def verify_action(
     payload_dict: dict,
     used_jtis: set,
     system_public_key: Optional[str] = None,
+    db=None,
 ) -> VerificationResult:
     checks_passed = {}
     diff = None
@@ -141,6 +142,19 @@ def verify_action(
             injection_findings=injection_findings, evidence_id=None,
         )
     used_jtis.add(ticket["jti"])
+
+    # Persist consumed status to DB if available
+    if db is not None:
+        try:
+            from apps.api.models import ExecutionTicket
+        except ImportError:
+            from models import ExecutionTicket  # type: ignore
+        ticket_row = db.query(ExecutionTicket).filter(
+            ExecutionTicket.jti == ticket["jti"]
+        ).first()
+        if ticket_row:
+            ticket_row.status = "CONSUMED"
+            db.commit()
 
     # Check 6 — action_matches
     passed = action == ticket["action"]
