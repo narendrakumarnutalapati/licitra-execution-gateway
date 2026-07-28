@@ -4,6 +4,7 @@ Run inside the container:
     docker compose exec api python scripts/seed.py
 """
 
+import os
 import sys
 import time
 import uuid
@@ -643,7 +644,8 @@ def wait_for_api(client, max_retries=15, delay=2):
 
 
 def main():
-    client = httpx.Client()
+    api_key = os.environ.get("LICITRA_API_KEY", "")
+    client = httpx.Client(headers={"X-API-Key": api_key} if api_key else {})
 
     wait_for_api(client)
 
