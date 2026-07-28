@@ -122,3 +122,42 @@ def test_counter_reset():
 
     after_reset = evaluate_policy(agent, intent)
     assert after_reset.allowed is True
+
+
+def test_daily_counter_resets_after_24h():
+    from packages.policy.policy import (
+        _rate_counters, check_rate_limit
+    )
+    from datetime import datetime, timezone, timedelta
+
+    agent = {
+        "agent_id": "daily-reset-test",
+        "allowed_actions": ["test_action"],
+        "allowed_resources": ["res/*"],
+        "max_actions_per_hour": 1000,
+        "max_actions_per_day": 2,
+        "max_daily_budget": 9999,
+        "action_cost_weights": {},
+    }
+    action = "test_action"
+    key = (agent["agent_id"], action)
+
+    # Clear any existing counter
+    _rate_counters.pop(key, None)
+
+    # Hit the daily limit
+    check_rate_limit(agent, action)
+    check_rate_limit(agent, action)
+
+    # Third call should be blocked
+    result = check_rate_limit(agent, action)
+    assert result["passed"] is False
+
+    # Simulate 24 hours passing
+    _rate_counters[key]["day_start"] = (
+        datetime.now(timezone.utc) - timedelta(hours=25)
+    )
+
+    # Counter should reset and pass now
+    result = check_rate_limit(agent, action)
+    assert result["passed"] is True

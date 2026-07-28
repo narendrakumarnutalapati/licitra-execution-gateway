@@ -67,53 +67,79 @@ def resource_matches(resource: str, allowed_resources: list) -> bool:
     return False
 
 
-def check_rate_limit(agent: dict, action: str) -> RateLimitResult:
-    agent_id = agent["agent_id"]
-    key = (agent_id, action)
+def check_rate_limit(agent: dict, action: str) -> dict:
     now = datetime.now(timezone.utc)
+    key = (agent["agent_id"], action)
 
-    limit_hourly = agent["max_actions_per_hour"]
-    limit_daily = agent["max_actions_per_day"]
+    if key not in _rate_counters:
+        _rate_counters[key] = {
+            "hourly_count": 0,
+            "daily_count": 0,
+            "window_start": now,    # hourly window
+            "day_start": now,       # daily window
+        }
 
-    entry = _rate_counters.get(key)
-    if entry is None:
-        entry = {"hourly_count": 0, "daily_count": 0, "window_start": now}
-        _rate_counters[key] = entry
+    entry = _rate_counters[key]
 
-    elapsed = (now - entry["window_start"]).total_seconds()
-    if elapsed > 3600:
+    # Reset hourly counter if window expired
+    elapsed_hourly = (now - entry["window_start"]).total_seconds()
+    if elapsed_hourly > 3600:
         entry["hourly_count"] = 0
         entry["window_start"] = now
 
+    # Reset daily counter if day window expired
+    elapsed_daily = (now - entry["day_start"]).total_seconds()
+    if elapsed_daily > 86400:
+        entry["daily_count"] = 0
+        entry["day_start"] = now
+
     hourly = entry["hourly_count"]
     daily = entry["daily_count"]
+    limit_hourly = agent["max_actions_per_hour"]
+    limit_daily = agent["max_actions_per_day"]
 
     if hourly < limit_hourly and daily < limit_daily:
         entry["hourly_count"] += 1
         entry["daily_count"] += 1
-        return RateLimitResult(
-            passed=True,
-            hourly_count=entry["hourly_count"],
-            daily_count=entry["daily_count"],
-            limit_hourly=limit_hourly,
-            limit_daily=limit_daily,
-        )
+        return {
+            "passed": True,
+            "reason": "RATE_LIMIT_OK",
+            "hourly_count": entry["hourly_count"],
+            "daily_count": entry["daily_count"],
+            "limit_hourly": limit_hourly,
+            "limit_daily": limit_daily,
+        }
 
-    return RateLimitResult(
-        passed=False,
-        hourly_count=hourly,
-        daily_count=daily,
-        limit_hourly=limit_hourly,
-        limit_daily=limit_daily,
+    reason = (
+        "HOURLY_LIMIT_EXCEEDED"
+        if hourly >= limit_hourly
+        else "DAILY_LIMIT_EXCEEDED"
     )
+    return {
+        "passed": False,
+        "reason": reason,
+        "hourly_count": hourly,
+        "daily_count": daily,
+        "limit_hourly": limit_hourly,
+        "limit_daily": limit_daily,
+    }
 
 
 def check_budget(agent: dict, action: str) -> BudgetResult:
     agent_id = agent["agent_id"]
     daily_limit = agent["max_daily_budget"]
     action_cost = agent.get("action_cost_weights", {}).get(action, 1.0)
+    now = datetime.now(timezone.utc)
 
-    entry = _budget_store.setdefault(agent_id, {"daily_cost": 0.0})
+    entry = _budget_store.setdefault(agent_id, {"daily_cost": 0.0, "day_start": now})
+    if "day_start" not in entry:
+        entry["day_start"] = now
+
+    elapsed = (now - entry["day_start"]).total_seconds()
+    if elapsed > 86400:
+        entry["daily_cost"] = 0.0
+        entry["day_start"] = now
+
     current_cost = entry["daily_cost"]
 
     if current_cost + action_cost <= daily_limit:
@@ -182,13 +208,13 @@ def evaluate_policy(agent: dict, intent: dict) -> PolicyDecision:
         return _make_decision(allowed=False, reason="RESOURCE_NOT_ALLOWED")
 
     rl = check_rate_limit(agent, intent["action"])
-    if not rl.passed:
+    if not rl["passed"]:
         return _make_decision(
             allowed=False,
             reason="RATE_LIMIT_EXCEEDED",
             rate_limit_check="FAIL",
-            current_hourly_count=rl.hourly_count,
-            current_daily_count=rl.daily_count,
+            current_hourly_count=rl["hourly_count"],
+            current_daily_count=rl["daily_count"],
         )
 
     bud = check_budget(agent, intent["action"])
@@ -197,8 +223,8 @@ def evaluate_policy(agent: dict, intent: dict) -> PolicyDecision:
             allowed=False,
             reason="BUDGET_EXCEEDED",
             budget_check="FAIL",
-            current_hourly_count=rl.hourly_count,
-            current_daily_count=rl.daily_count,
+            current_hourly_count=rl["hourly_count"],
+            current_daily_count=rl["daily_count"],
             current_daily_cost=bud.current_cost,
         )
 
@@ -207,7 +233,7 @@ def evaluate_policy(agent: dict, intent: dict) -> PolicyDecision:
         reason="All policy checks passed",
         rate_limit_check="PASS",
         budget_check="PASS",
-        current_hourly_count=rl.hourly_count,
-        current_daily_count=rl.daily_count,
+        current_hourly_count=rl["hourly_count"],
+        current_daily_count=rl["daily_count"],
         current_daily_cost=bud.current_cost,
     )
