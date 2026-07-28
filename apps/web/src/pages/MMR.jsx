@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-const BASE = 'http://localhost:8000'
+import { BASE } from '../api'
 
 export default function MMR() {
   const [data, setData] = useState(null)

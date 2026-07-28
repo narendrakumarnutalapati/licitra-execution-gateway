@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import OWASPBadge from '../components/OWASPBadge.jsx'
 
-const BASE = 'http://localhost:8000'
+import { BASE } from '../api'
 
 function fmt(ts) {
   if (!ts) return '—'
@@ -41,8 +41,6 @@ export default function Actions() {
   }, [])
 
   const events = data?.events || []
-  if (events.length > 0) console.log('First audit event:', events[0])
-
   return (
     <div>
       <div className="section-header">

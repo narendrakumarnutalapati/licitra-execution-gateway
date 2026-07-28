@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 
-const BASE = 'http://localhost:8000'
+import { BASE } from '../api'
 
 function Row({ k, v }) {
   return (

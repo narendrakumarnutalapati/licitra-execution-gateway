@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import StatCard from '../components/StatCard.jsx'
 
-const BASE = 'http://localhost:8000'
+import { BASE } from '../api'
 
 function fmt(ts) {
   if (!ts) return '—'
