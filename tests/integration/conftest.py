@@ -1,3 +1,4 @@
+import os
 import time
 from datetime import datetime, timezone, timedelta
 
@@ -26,7 +27,9 @@ def _expires(minutes: int = 30) -> str:
 
 @pytest.fixture
 def client():
-    with httpx.Client(base_url=BASE, timeout=15) as c:
+    api_key = os.environ.get("LICITRA_API_KEY", "")
+    headers = {"X-API-Key": api_key} if api_key else {}
+    with httpx.Client(base_url=BASE, timeout=15, headers=headers) as c:
         yield c
 
 

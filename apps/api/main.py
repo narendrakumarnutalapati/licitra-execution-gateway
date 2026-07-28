@@ -31,8 +31,9 @@ logger = logging.getLogger("licitra")
 logger.setLevel(logging.INFO)
 logger.addHandler(_log_handler)
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Security, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
@@ -220,6 +221,43 @@ app.add_middleware(
 )
 
 
+# -----------------------------------------------------------------------
+# API Key Authentication
+# -----------------------------------------------------------------------
+
+API_KEY_HEADER = APIKeyHeader(
+    name="X-API-Key",
+    auto_error=False
+)
+
+
+def verify_api_key(
+    api_key: str = Security(API_KEY_HEADER)
+) -> str:
+    """
+    Validates X-API-Key header against
+    LICITRA_API_KEY environment variable.
+
+    If LICITRA_API_KEY is not set or empty,
+    auth is DISABLED (development/test mode).
+    Tests pass without any API key.
+
+    If LICITRA_API_KEY is set, every protected
+    endpoint requires the correct key or
+    returns 401.
+    """
+    expected = os.environ.get("LICITRA_API_KEY", "")
+    if not expected:
+        return "dev-mode-no-auth"
+    if not api_key or api_key != expected:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API key",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    return api_key
+
+
 # ---------------------------------------------------------------------------
 # 1. GET /healthz
 # ---------------------------------------------------------------------------
@@ -242,7 +280,7 @@ def healthz(db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @app.post("/agents/register", status_code=201)
-def register_agent(body: AgentRegisterRequest, db: Session = Depends(get_db)):
+def register_agent(body: AgentRegisterRequest, db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     try:
         bytes.fromhex(body.public_key)
         if len(bytes.fromhex(body.public_key)) != 32:
@@ -285,7 +323,7 @@ def register_agent(body: AgentRegisterRequest, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @app.post("/intent/create", status_code=201)
-def create_intent_endpoint(body: IntentCreateRequest, db: Session = Depends(get_db)):
+def create_intent_endpoint(body: IntentCreateRequest, db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     probe = {
         "action": body.action,
         "resource": body.resource,
@@ -355,7 +393,7 @@ def create_intent_endpoint(body: IntentCreateRequest, db: Session = Depends(get_
 # ---------------------------------------------------------------------------
 
 @app.post("/policy/evaluate")
-def policy_evaluate(body: PolicyEvaluateRequest, db: Session = Depends(get_db)):
+def policy_evaluate(body: PolicyEvaluateRequest, db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     agent_row = db.query(Agent).filter(Agent.agent_id == body.agent_id).first()
     if not agent_row:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -425,7 +463,7 @@ def policy_evaluate(body: PolicyEvaluateRequest, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @app.post("/tickets/issue", status_code=201)
-def issue_ticket(body: TicketIssueRequest, db: Session = Depends(get_db)):
+def issue_ticket(body: TicketIssueRequest, db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     decision_row = db.query(PolicyDecisionModel).filter(
         PolicyDecisionModel.decision_id == body.decision_id
     ).first()
@@ -505,7 +543,7 @@ def _get_app_state_used_jtis() -> set:
 # ---------------------------------------------------------------------------
 
 @app.post("/actions/verify")
-def actions_verify(body: VerifyRequest, db: Session = Depends(get_db)):
+def actions_verify(body: VerifyRequest, db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     ticket_row = db.query(ExecutionTicket).filter(
         ExecutionTicket.ticket_id == body.ticket_id
     ).first()
@@ -626,7 +664,7 @@ def actions_verify(body: VerifyRequest, db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @app.post("/actions/execute-demo")
-def execute_demo(body: VerifyRequest, db: Session = Depends(get_db)):
+def execute_demo(body: VerifyRequest, db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     ticket_row = db.query(ExecutionTicket).filter(
         ExecutionTicket.ticket_id == body.ticket_id
     ).first()
@@ -796,7 +834,7 @@ def audit_root(db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @app.post("/audit/verify-proof")
-def audit_verify_proof(body: ProofVerifyRequest):
+def audit_verify_proof(body: ProofVerifyRequest, _: str = Security(verify_api_key)):
     valid = mmr_verify_proof(body.leaf_hash, body.proof, body.root, body.leaf_index)
     proof_size = 0
     if isinstance(body.proof, dict):
@@ -1030,7 +1068,7 @@ def get_metrics(db: Session = Depends(get_db)):
 # ---------------------------------------------------------------------------
 
 @app.post("/metrics/snapshot", status_code=201)
-def metrics_snapshot():
+def metrics_snapshot(_: str = Security(verify_api_key)):
     result = _take_metrics_snapshot()
     return result
 
@@ -1276,7 +1314,7 @@ def _build_response(attack_name, owasp, verify_result, t0):
 
 
 @app.post("/demo/authorized")
-def demo_authorized(db: Session = Depends(get_db)):
+def demo_authorized(db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     t0 = _time.time()
     aid = f"demo-ui-auth-{int(t0)}"
     _demo_register(aid, ["send_email"], ["cfo@company.com"], {"send_email": _EMAIL_SCHEMA}, db=db)
@@ -1290,7 +1328,7 @@ def demo_authorized(db: Session = Depends(get_db)):
 
 
 @app.post("/demo/tamper")
-def demo_tamper(db: Session = Depends(get_db)):
+def demo_tamper(db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     t0 = _time.time()
     aid = f"demo-ui-tamper-{int(t0)}"
     _demo_register(aid, ["send_email"], ["cfo@company.com"], {"send_email": _EMAIL_SCHEMA}, db=db)
@@ -1305,7 +1343,7 @@ def demo_tamper(db: Session = Depends(get_db)):
 
 
 @app.post("/demo/replay")
-def demo_replay(db: Session = Depends(get_db)):
+def demo_replay(db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     t0 = _time.time()
     aid = f"demo-ui-replay-{int(t0)}"
     _demo_register(aid, ["send_email"], ["cfo@company.com"], {"send_email": _EMAIL_SCHEMA}, db=db)
@@ -1320,7 +1358,7 @@ def demo_replay(db: Session = Depends(get_db)):
 
 
 @app.post("/demo/overscope")
-def demo_overscope(db: Session = Depends(get_db)):
+def demo_overscope(db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     t0 = _time.time()
     aid = f"demo-ui-scope-{int(t0)}"
     schema = {"type": "object", "properties": {"contact_id": {"type": "string"}}}
@@ -1335,7 +1373,7 @@ def demo_overscope(db: Session = Depends(get_db)):
 
 
 @app.post("/demo/expired")
-def demo_expired(db: Session = Depends(get_db)):
+def demo_expired(db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     from datetime import timedelta
     t0 = _time.time()
     aid = f"demo-ui-expiry-{int(t0)}"
@@ -1351,7 +1389,7 @@ def demo_expired(db: Session = Depends(get_db)):
 
 
 @app.post("/demo/fake")
-def demo_fake(db: Session = Depends(get_db)):
+def demo_fake(db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     t0 = _time.time()
     payload = {"to": "cfo@company.com", "subject": "test", "body": "test"}
     r = _run_verify("fake-ticket-ui-99999", "fake-agent-ui-99999",
@@ -1360,7 +1398,7 @@ def demo_fake(db: Session = Depends(get_db)):
 
 
 @app.post("/demo/injection")
-def demo_injection(db: Session = Depends(get_db)):
+def demo_injection(db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     t0 = _time.time()
     aid = f"demo-ui-inj-{int(t0)}"
     _demo_register(aid, ["send_email"], ["cfo@company.com"], {"send_email": _EMAIL_SCHEMA}, db=db)
@@ -1384,7 +1422,7 @@ def demo_injection(db: Session = Depends(get_db)):
 
 
 @app.post("/demo/schema")
-def demo_schema(db: Session = Depends(get_db)):
+def demo_schema(db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     t0 = _time.time()
     aid = f"demo-ui-schema-{int(t0)}"
     _demo_register(aid, ["send_email"], ["cfo@company.com"], {"send_email": _EMAIL_SCHEMA}, db=db)
@@ -1398,7 +1436,7 @@ def demo_schema(db: Session = Depends(get_db)):
 
 
 @app.post("/demo/ratelimit")
-def demo_ratelimit(db: Session = Depends(get_db)):
+def demo_ratelimit(db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     t0 = _time.time()
     aid = f"demo-ui-rate-{int(t0)}"
     _demo_register(aid, ["send_email"], ["cfo@company.com"], {"send_email": _EMAIL_SCHEMA},
@@ -1421,7 +1459,7 @@ def demo_ratelimit(db: Session = Depends(get_db)):
 
 
 @app.post("/demo/mmr-tamper")
-def demo_mmr_tamper(db: Session = Depends(get_db)):
+def demo_mmr_tamper(db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     t0 = _time.time()
     aid = f"demo-ui-mmr-{int(t0)}"
     _demo_register(aid, ["send_email"], ["cfo@company.com"], {"send_email": _EMAIL_SCHEMA}, db=db)
@@ -1452,7 +1490,7 @@ def demo_mmr_tamper(db: Session = Depends(get_db)):
 
 
 @app.post("/demo/full")
-def demo_full(db: Session = Depends(get_db)):
+def demo_full(db: Session = Depends(get_db), _: str = Security(verify_api_key)):
     endpoints = [
         demo_authorized, demo_tamper, demo_replay, demo_overscope,
         demo_expired, demo_fake, demo_injection, demo_schema,
@@ -1479,7 +1517,7 @@ if os.getenv("DEBUG", "").lower() == "true":
         new_data: Dict
 
     @app.post("/debug/tamper-mmr")
-    def debug_tamper_mmr(body: _TamperRequest, db: Session = Depends(get_db)):
+    def debug_tamper_mmr(body: _TamperRequest, db: Session = Depends(get_db), _: str = Security(verify_api_key)):
         leaf_row = db.query(MmrLeaf).filter(MmrLeaf.leaf_index == body.leaf_index).first()
         if not leaf_row:
             raise HTTPException(
