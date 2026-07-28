@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import OWASPBadge from '../components/OWASPBadge.jsx'
 
-const BASE = 'http://localhost:8000'
+import { apiPost } from '../api'
 
 const ATTACKS = [
   {
@@ -95,7 +95,7 @@ function AttackCard({ attack, nav }) {
     setLoading(true)
     setResult(null)
     try {
-      const r = await fetch(`${BASE}${attack.endpoint}`, { method: 'POST' })
+      const r = await apiPost(attack.endpoint)
       setResult(await r.json())
     } catch (e) {
       setResult({ result: 'ERROR', reason: e.message })
@@ -160,7 +160,7 @@ export default function Demo() {
     try {
       for (const attack of ATTACKS) {
         setFullProgress(p => [...p, { name: attack.name, status: 'running' }])
-        const r = await fetch(`${BASE}${attack.endpoint}`, { method: 'POST' })
+        const r = await apiPost(attack.endpoint)
         const d = await r.json()
         setFullProgress(p => p.map(x => x.name === attack.name ? { ...x, status: d.result, data: d } : x))
       }

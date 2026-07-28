@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import OWASPBadge from '../components/OWASPBadge.jsx'
 
-const BASE = 'http://localhost:8000'
+import { BASE } from '../api'
 
 const OUT_OF_SCOPE = [
   'LLM02', 'LLM03', 'LLM04', 'LLM07', 'LLM08', 'LLM09',

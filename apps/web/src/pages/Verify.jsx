@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-const BASE = 'http://localhost:8000'
+import { apiPost, apiGet } from '../api'
 
 const STEPS = [
   { n: 1, text: 'Run any attack on the Demo page' },
@@ -33,15 +33,11 @@ export default function Verify() {
     }
     setLoading(true)
     try {
-      const r = await fetch(`${BASE}/audit/verify-proof`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          leaf_hash: leafHash,
-          proof,
-          root: rootHash,
-          leaf_index: parseInt(leafIndex, 10),
-        }),
+      const r = await apiPost('/audit/verify-proof', {
+        leaf_hash: leafHash,
+        proof,
+        root: rootHash,
+        leaf_index: parseInt(leafIndex, 10),
       })
       const d = await r.json()
       setResult(d)
@@ -67,13 +63,13 @@ export default function Verify() {
     setAutoFillMsg(null)
     setErr(null)
     try {
-      const auditRes = await fetch(`${BASE}/audit?limit=1`)
+      const auditRes = await apiGet('/audit?limit=1')
       const auditData = await auditRes.json()
       const events = auditData.events || []
       if (!events.length) { setErr('No audit events found. Run a demo first.'); setAutoFilling(false); return }
       const eid = events[0].evidence_id
       if (!eid) { setErr('Latest event has no evidence record yet.'); setAutoFilling(false); return }
-      const evRes = await fetch(`${BASE}/evidence/${eid}`)
+      const evRes = await apiGet(`/evidence/${eid}`)
       const ev = await evRes.json()
       setLeafHash(ev.mmr_leaf_hash || '')
       setProofJson(JSON.stringify(ev.mmr_proof || {}, null, 2))
